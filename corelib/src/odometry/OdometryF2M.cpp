@@ -243,6 +243,7 @@ Transform OdometryF2M::computeTransform(
 			}
 		}
 
+		//Se non ha info su immagini e laser ritorna un output vuoto
 		if(data.imageRaw().empty() && data.laserScanRaw().isEmpty())
 		{
 			return output;
@@ -323,6 +324,7 @@ Transform OdometryF2M::computeTransform(
 					UWARN("Failed to find a transformation with the provided guess (%s), trying again without a guess.", guess.prettyPrint().c_str());
 				}
 
+				//Computa la trasformazione e mette in lastFrame i keypoint e i descrittori
 				transform = regPipeline_->computeTransformationMod(
 						tmpMap,
 						*lastFrame_,
