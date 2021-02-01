@@ -51,6 +51,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace rtabmap {
 
+
+//F2M è il default
 Odometry * Odometry::create(const ParametersMap & parameters)
 {
 	int odomTypeInt = Parameters::defaultOdomStrategy();
@@ -282,6 +284,7 @@ Transform Odometry::process(SensorData & data, OdometryInfo * info)
 
 Transform Odometry::process(SensorData & data, const Transform & guessIn, OdometryInfo * info)
 {
+	//valuta se l'immagine debba essere rettificata o meno
 	UASSERT_MSG(data.id() >= 0, uFormat("Input data should have ID greater or equal than 0 (id=%d)!", data.id()).c_str());
 
 	if(!_imagesAlreadyRectified && !this->canProcessRawImages() && !data.imageRaw().empty())
@@ -323,7 +326,8 @@ Transform Odometry::process(SensorData & data, const Transform & guessIn, Odomet
 		}
 	}
 
-	// Ground alignment
+	//Allineamento col ground. Se ha infromazioni depth allinea l'immagine al pavimento.
+	//Classe util3d per SEGMENTAZIONE
 	if(_pose.isIdentity() && _alignWithGround)
 	{
 		if(data.depthOrRightRaw().empty())
@@ -387,6 +391,7 @@ Transform Odometry::process(SensorData & data, const Transform & guessIn, Odomet
 	}
 
 	// cache imu data
+	// orientazione come(x,y,z, wx,wy,wz,ww)
 	if(!data.imu().empty())
 	{
 		if(!(data.imu().orientation()[0] == 0.0 && data.imu().orientation()[1] == 0.0 && data.imu().orientation()[2] == 0.0))
@@ -453,6 +458,7 @@ Transform Odometry::process(SensorData & data, const Transform & guessIn, Odomet
 		imuCurrentTransform = Transform::getTransform(imus_, data.stamp());
 		if(!imuCurrentTransform.isNull() && !imuLastTransform_.isNull())
 		{
+			//nuova posa = orientazione*vecchia quindi orientazione=vecchia_inv*nuova
 			Transform orientation = imuLastTransform_.inverse() * imuCurrentTransform;
 			guess = Transform(
 					orientation.r11(), orientation.r12(), orientation.r13(), guess.x(),
@@ -463,10 +469,15 @@ Transform Odometry::process(SensorData & data, const Transform & guessIn, Odomet
 
 	UTimer time;
 	Transform t;
+
+	//Se _imageDecimation > 1 allora riscala l'immagine, calcola la trasformazione e riscala alla dimensione
+	//originale le features e le setta in SensorData data (feature2D, feature3D, descrittori)
 	if(_imageDecimation > 1 && !data.imageRaw().empty())
 	{
 		// Decimation of images with calibrations
 		SensorData decimatedData = data;
+
+		//Scala le immagini
 		cv::Mat rgbLeft = util2d::decimate(decimatedData.imageRaw(), _imageDecimation);
 		cv::Mat depthRight = util2d::decimate(decimatedData.depthOrRightRaw(), _imageDecimation);
 		std::vector<CameraModel> cameraModels = decimatedData.cameraModels();
@@ -523,6 +534,8 @@ Transform Odometry::process(SensorData & data, const Transform & guessIn, Odomet
 			}
 		}
 	}
+
+	//Altrimenti calcola solamente la trasformazione e non c'è bisogno di riscalare nulla
 	else
 	{
 		t = this->computeTransform(data, guess, info);
@@ -545,6 +558,7 @@ Transform Odometry::process(SensorData & data, const Transform & guessIn, Odomet
 			info->memoryUsage = UProcessInfo::getMemoryUsage()/(1024*1024);
 		}
 
+	//Credo che usi il ground truth per i Kalman Filter. Sulla base della nuova trasformazione computata fa la update.
 		if(!data.groundTruth().isNull())
 		{
 			if(!previousGroundTruthPose_.isNull())
@@ -555,6 +569,7 @@ Transform Odometry::process(SensorData & data, const Transform & guessIn, Odomet
 		}
 	}
 
+	//Se la trasformazione è avvenuta
 	if(!t.isNull())
 	{
 		_resetCurrentCount = _resetCountdown;
@@ -656,7 +671,7 @@ Transform Odometry::process(SensorData & data, const Transform & guessIn, Odomet
 					vpitch = 0.0f;
 				}
 			}
-
+			//Prima lo ha trasformato in velocità, ora lo ritrasforma in spazio
 			if(dt)
 			{
 				t = Transform(vx*dt, vy*dt, vz*dt, vroll*dt, vpitch*dt, vyaw*dt);
@@ -923,7 +938,14 @@ void Odometry::updateKalmanFilter(float & vx, float & vy, float & vz, float & vr
 {
 	// Set measurement to predict
 	cv::Mat measurements;
-	if(!_force3DoF)
+	if(_force3DoF)
+	{
+		measurements = cv::Mat(3,1,CV_32FC1);
+		measurements.at<float>(0) = vx;     // x'
+		measurements.at<float>(1) = vy;     // y'
+		measurements.at<float>(2) = vyaw;   // yaw',
+	}
+	else
 	{
 		measurements = cv::Mat(6,1,CV_32FC1);
 		measurements.at<float>(0) = vx;     // x'
@@ -932,13 +954,6 @@ void Odometry::updateKalmanFilter(float & vx, float & vy, float & vz, float & vr
 		measurements.at<float>(3) = vroll;  // roll'
 		measurements.at<float>(4) = vpitch; // pitch'
 		measurements.at<float>(5) = vyaw;   // yaw'
-	}
-	else
-	{
-		measurements = cv::Mat(3,1,CV_32FC1);
-		measurements.at<float>(0) = vx;     // x'
-		measurements.at<float>(1) = vy;     // y'
-		measurements.at<float>(2) = vyaw;   // yaw',
 	}
 
 	// The "correct" phase that is going to use the predicted value and our measurement
