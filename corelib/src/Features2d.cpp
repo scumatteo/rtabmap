@@ -731,6 +731,7 @@ std::vector<cv::KeyPoint> Feature2D::generateKeypoints(const cv::Mat & image, co
 	{
 		for (int j = 0; j<gridCols_; ++j)
 		{
+			//Genera i keypoints per una certa roi
 			cv::Rect roi(globalRoi.x + j*colSize, globalRoi.y + i*rowSize, colSize, rowSize);
 			std::vector<cv::KeyPoint> sub_keypoints;
 			sub_keypoints = this->generateKeypointsImpl(image, roi, mask);
@@ -744,6 +745,7 @@ std::vector<cv::KeyPoint> Feature2D::generateKeypoints(const cv::Mat & image, co
 					iter->pt.y += roi.y;
 				}
 			}
+			//Aggiunge i keypoints della roi agli altri
 			keypoints.insert( keypoints.end(), sub_keypoints.begin(), sub_keypoints.end() );
 		}
 	}

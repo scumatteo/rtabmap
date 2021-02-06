@@ -372,21 +372,24 @@ Transform RegistrationVis::computeTransformationImpl(
 
 		std::vector<int> orignalWordsFromIds;
 		int kptsFromSource = 0;
+
+		//Se l'immagine non contiene ancora keypoints allora li computa
 		if(fromSignature.getWords().empty())
 		{
 			if(fromSignature.sensorData().keypoints().empty())
 			{
 				if(!imageFrom.empty())
 				{
-					if(imageFrom.channels() > 1)
+					if(imageFrom.channels() > 1) //Da rgb a greyscale
 					{
 						cv::Mat tmp;
 						cv::cvtColor(imageFrom, tmp, cv::COLOR_BGR2GRAY);
 						imageFrom = tmp;
 					}
 
+					//Se il parametro _depthAsMask è true si usa la depth image come maschera per il calcolo dei keypoints
 					cv::Mat depthMask;
-					if(!fromSignature.sensorData().depthRaw().empty() && _depthAsMask)
+					if(!fromSignature.sensorData().depthRaw().empty() && _depthAsMask) 
 					{
 						if(imageFrom.rows % fromSignature.sensorData().depthRaw().rows == 0 &&
 						   imageFrom.cols % fromSignature.sensorData().depthRaw().cols == 0 &&
@@ -396,17 +399,22 @@ Transform RegistrationVis::computeTransformationImpl(
 						}
 					}
 
+					//Genera i keypoints, con depthMask non null se c'è
 					kptsFrom = _detectorFrom->generateKeypoints(
 							imageFrom,
 							depthMask);
 				}
 			}
+
+			//Se ha già i keypoints usa quelli
 			else
-			{
+			{ 
 				kptsFrom = fromSignature.sensorData().keypoints();
 				kptsFromSource = 1;
 			}
 		}
+
+		//Altrimenti se ha già le parole
 		else
 		{
 			kptsFromSource = 2;
@@ -414,7 +422,7 @@ Transform RegistrationVis::computeTransformationImpl(
 			int i=0;
 			bool allUniques = true;
 			int previousIdAdded = 0;
-			kptsFrom = fromSignature.getWordsKpts();
+			kptsFrom = fromSignature.getWordsKpts(); //ha già i keypoints
 			for(std::multimap<int, int>::const_iterator iter=fromSignature.getWords().begin(); iter!=fromSignature.getWords().end(); ++iter)
 			{
 				UASSERT(iter->second>=0 && iter->second<(int)orignalWordsFromIds.size());
@@ -459,20 +467,20 @@ Transform RegistrationVis::computeTransformationImpl(
 			}
 
 			std::vector<cv::Point3f> kptsFrom3D;
-			if(kptsFrom.size() == fromSignature.getWords3().size())
+			if(kptsFrom.size() == fromSignature.getWords3().size()) //Se le ha già le setta
 			{
 				kptsFrom3D = fromSignature.getWords3();
 			}
-			else if(kptsFrom.size() == fromSignature.sensorData().keypoints3D().size())
+			else if(kptsFrom.size() == fromSignature.sensorData().keypoints3D().size()) //Altrimenti le cerca anche nel sensorData
 			{
 				kptsFrom3D = fromSignature.sensorData().keypoints3D();
 			}
 			else
 			{
-				kptsFrom3D = _detectorFrom->generateKeypoints3D(fromSignature.sensorData(), kptsFrom);
+				kptsFrom3D = _detectorFrom->generateKeypoints3D(fromSignature.sensorData(), kptsFrom); //Altrimenti li genera a partire da quelli 2D
 			}
 
-			if(!imageFrom.empty() && !imageTo.empty())
+			if(!imageFrom.empty() && !imageTo.empty()) //Se le immagini non sono vuote calcola i keypoints
 			{
 				std::vector<cv::Point2f> cornersFrom;
 				cv::KeyPoint::convert(kptsFrom, cornersFrom);
@@ -490,6 +498,8 @@ Transform RegistrationVis::computeTransformationImpl(
 					cv::Rodrigues(R, rvec);
 					cv::Mat tvec = (cv::Mat_<double>(1,3) << (double)guessCameraRef.x(), (double)guessCameraRef.y(), (double)guessCameraRef.z());
 					cv::Mat K = fromSignature.sensorData().cameraModels().size()?fromSignature.sensorData().cameraModels()[0].K():fromSignature.sensorData().stereoCameraModel().left().K();
+					
+					//Proietta i punti da 3D su un piano
 					cv::projectPoints(kptsFrom3D, rvec, tvec, K, cv::Mat(), cornersTo);
 				}
 
@@ -543,8 +553,10 @@ Transform RegistrationVis::computeTransformationImpl(
 				std::vector<cv::Point3f> kptsTo3D;
 				if(_estimationType == 0 || _estimationType == 1 || !_forwardEstimateOnly)
 				{
-					kptsTo3D = _detectorTo->generateKeypoints3D(toSignature.sensorData(), kptsTo);
+					kptsTo3D = _detectorTo->generateKeypoints3D(toSignature.sensorData(), kptsTo); //Genera i keypoints 3D
 				}
+
+				//Di seguito vengono settate le word sia 2D che 3D
 
 				UASSERT(kptsFrom.size() == kptsFrom3DKept.size());
 				UASSERT(kptsFrom.size() == kptsTo.size());
@@ -563,9 +575,9 @@ Transform RegistrationVis::computeTransformationImpl(
 						words3To.push_back(kptsTo3D[i]);
 					}
 				}
-				toSignature.sensorData().setFeatures(kptsTo, kptsTo3D, cv::Mat());
+				toSignature.sensorData().setFeatures(kptsTo, kptsTo3D, cv::Mat()); //Setta le feature in SensorData
 			}
-			else
+			else //Altrimenti se le immagini sono vuote setta le feature vuote in SensorData
 			{
 				if(imageFrom.empty())
 				{
@@ -582,19 +594,21 @@ Transform RegistrationVis::computeTransformationImpl(
 						words3From.push_back(kptsFrom3D[i]);
 					}
 				}
-				toSignature.sensorData().setFeatures(std::vector<cv::KeyPoint>(), std::vector<cv::Point3f>(), cv::Mat());
+				toSignature.sensorData().setFeatures(std::vector<cv::KeyPoint>(), std::vector<cv::Point3f>(), cv::Mat());//Setta le feature vuote in SensorData
 			}
 
-			fromSignature.sensorData().setFeatures(kptsFrom, kptsFrom3D, cv::Mat());
+			fromSignature.sensorData().setFeatures(kptsFrom, kptsFrom3D, cv::Mat());//Setta le feature in SensorData
 		}
 		else // Features Matching
 		{
 			UDEBUG("");
 			std::vector<cv::KeyPoint> kptsTo;
 			int kptsToSource = 0;
-			if(toSignature.getWords().empty())
+			if(toSignature.getWords().empty()) 
 			{
-				if(toSignature.sensorData().keypoints().empty() &&
+
+				//Se non ha keypoints ma c'è l'immagine allora calcola i keypoints
+				if(toSignature.sensorData().keypoints().empty() && 
 				   !imageTo.empty())
 				{
 					if(imageTo.channels() > 1)
@@ -615,26 +629,29 @@ Transform RegistrationVis::computeTransformationImpl(
 						}
 					}
 
+					//Genera i keypoints
 					kptsTo = _detectorTo->generateKeypoints(
 							imageTo,
 							depthMask);
 				}
-				else
+				else //Altrimenti se ha già i keypoints li setta direttamente
 				{
 					kptsTo = toSignature.sensorData().keypoints();
 					kptsToSource = 1;
 				}
 			}
-			else
+			else //Se ha già le parole le setta 
 			{
 				kptsTo = toSignature.getWordsKpts();
 				kptsToSource = 2;
 			}
 
-			// extract descriptors
+			// Di seguito estrae i descrittori
 			UDEBUG("kptsFrom=%d kptsFromSource=%d", (int)kptsFrom.size(), kptsFromSource);
 			UDEBUG("kptsTo=%d kptsToSource=%d", (int)kptsTo.size(), kptsToSource);
 			cv::Mat descriptorsFrom;
+
+			//Se li ha già li setta per il from
 			if(kptsFromSource == 2 &&
 				fromSignature.getWordsDescriptors().rows &&
 				((kptsFrom.empty() && fromSignature.getWordsDescriptors().rows) ||
@@ -647,6 +664,8 @@ Transform RegistrationVis::computeTransformationImpl(
 			{
 				descriptorsFrom = fromSignature.sensorData().descriptors();
 			}
+
+			//Se non li ha ma c'è l'immagine li calcola
 			else if(!imageFrom.empty())
 			{
 				if(imageFrom.channels() > 1)
@@ -657,9 +676,10 @@ Transform RegistrationVis::computeTransformationImpl(
 				}
 				UDEBUG("cleared orignalWordsFromIds");
 				orignalWordsFromIds.clear();
-				descriptorsFrom = _detectorFrom->generateDescriptors(imageFrom, kptsFrom);
+				descriptorsFrom = _detectorFrom->generateDescriptors(imageFrom, kptsFrom); //Genera i descrittori con opencv a partire dall'immagine e keypoints
 			}
 
+			//Stessa cosa per il to
 			cv::Mat descriptorsTo;
 			if(kptsTo.size())
 			{
@@ -715,7 +735,7 @@ Transform RegistrationVis::computeTransformationImpl(
 						   kptsFrom.size(),
 						   fromSignature.sensorData().keypoints3D().size());
 				}
-				kptsFrom3D = _detectorFrom->generateKeypoints3D(fromSignature.sensorData(), kptsFrom);
+				kptsFrom3D = _detectorFrom->generateKeypoints3D(fromSignature.sensorData(), kptsFrom); //Se non li ha già li calcola
 				UDEBUG("generated kptsFrom3D=%d", (int)kptsFrom3D.size());
 			}
 
@@ -723,7 +743,7 @@ Transform RegistrationVis::computeTransformationImpl(
 			   (_detectorFrom->getMinDepth() > 0.0f || _detectorFrom->getMaxDepth() > 0.0f) &&
 			   (!fromSignature.sensorData().cameraModels().empty() || fromSignature.sensorData().stereoCameraModel().isValidForProjection())) // Ignore local map from OdometryF2M
 			{
-				_detectorFrom->filterKeypointsByDepth(kptsFrom, descriptorsFrom, kptsFrom3D, _detectorFrom->getMinDepth(), _detectorFrom->getMaxDepth());
+				_detectorFrom->filterKeypointsByDepth(kptsFrom, descriptorsFrom, kptsFrom3D, _detectorFrom->getMinDepth(), _detectorFrom->getMaxDepth());//Filtra sulla base della depth
 			}
 
 			if(kptsToSource == 2 && kptsTo.size() == toSignature.getWords3().size())
@@ -763,6 +783,7 @@ Transform RegistrationVis::computeTransformationImpl(
 
 			UASSERT(kptsFrom.empty() || descriptorsFrom.rows == 0 || int(kptsFrom.size()) == descriptorsFrom.rows);
 
+			//Setta feature 2D, 3D e descrittori nel SensorData
 			fromSignature.sensorData().setFeatures(kptsFrom, kptsFrom3D, descriptorsFrom);
 			toSignature.sensorData().setFeatures(kptsTo, kptsTo3D, descriptorsTo);
 
@@ -809,8 +830,9 @@ Transform RegistrationVis::computeTransformationImpl(
 					cv::Rodrigues(R, rvec);
 					cv::Mat tvec = (cv::Mat_<double>(1,3) << (double)guessCameraRef.x(), (double)guessCameraRef.y(), (double)guessCameraRef.z());
 					cv::Mat K = toSignature.sensorData().cameraModels().size()?toSignature.sensorData().cameraModels()[0].K():toSignature.sensorData().stereoCameraModel().left().K();
+					
 					std::vector<cv::Point2f> projected;
-					cv::projectPoints(kptsFrom3D, rvec, tvec, K, cv::Mat(), projected);
+					cv::projectPoints(kptsFrom3D, rvec, tvec, K, cv::Mat(), projected);//Proietta i punti 3D su piano 2D
 					UDEBUG("Projected points=%d", (int)projected.size());
 					//remove projected points outside of the image
 					UASSERT((int)projected.size() == descriptorsFrom.rows);
@@ -840,6 +862,8 @@ Transform RegistrationVis::computeTransformationImpl(
 						if(_guessMatchToProjection)
 						{
 							UDEBUG("match frame to projected");
+
+							//Creazione del KD-TREE
 							// Create kd-tree for projected keypoints
 							rtflann::Matrix<float> cornersProjectedMat((float*)cornersProjected.data(), cornersProjected.size(), 2);
 							rtflann::Index<rtflann::L2_Simple<float> > index(cornersProjectedMat, rtflann::KDTreeIndexParams());
@@ -851,7 +875,7 @@ Transform RegistrationVis::computeTransformationImpl(
 							std::vector<cv::Point2f> pointsTo;
 							cv::KeyPoint::convert(kptsTo, pointsTo);
 							rtflann::Matrix<float> pointsToMat((float*)pointsTo.data(), pointsTo.size(), 2);
-							index.radiusSearch(pointsToMat, indices, dists, radius*radius, rtflann::SearchParams());
+							index.radiusSearch(pointsToMat, indices, dists, radius*radius, rtflann::SearchParams()); //ricera e mette gli indici in indices
 
 							UASSERT(indices.size() == pointsToMat.rows);
 							UASSERT(descriptorsFrom.cols == descriptorsTo.cols);
@@ -892,7 +916,7 @@ Transform RegistrationVis::computeTransformationImpl(
 										matcher.match(descriptorsTo.row(i), cv::Mat(descriptors, cv::Range(0, oi)), matches);
 										if(!matches.empty())
 										{
-											matchedIndex = descriptorsIndices.at(matches.at(0).trainIdx);
+											matchedIndex = descriptorsIndices.at(matches.at(0).trainIdx); //Indici matchati
 										}
 									}
 									else // bruteforce knn
@@ -903,7 +927,7 @@ Transform RegistrationVis::computeTransformationImpl(
 										UASSERT(matches[0].size() == 2);
 										if(matches[0].at(0).distance < _nndr * matches[0].at(1).distance)
 										{
-											matchedIndex = descriptorsIndices.at(matches[0].at(0).trainIdx);
+											matchedIndex = descriptorsIndices.at(matches[0].at(0).trainIdx); //Indici matchati
 										}
 									}
 								}
@@ -912,12 +936,14 @@ Transform RegistrationVis::computeTransformationImpl(
 									matchedIndex = indices[i].at(0);
 								}
 
+								//Se trova dei match
 								if(matchedIndex >= 0)
 								{
 									matchedIndex = projectedIndexToDescIndex[matchedIndex];
 									int id = !orignalWordsFromIds.empty()?orignalWordsFromIds[matchedIndex]:matchedIndex;
-
-									if(addedWordsFrom.find(matchedIndex) != addedWordsFrom.end())
+									
+									//Se sono diversi allora inserisce in <fromId, toId>
+									if(addedWordsFrom.find(matchedIndex) != addedWordsFrom.end()) 
 									{
 										id = addedWordsFrom.at(matchedIndex);
 										duplicates.insert(std::make_pair(matchedIndex, id));
@@ -929,12 +955,14 @@ Transform RegistrationVis::computeTransformationImpl(
 										wordsFrom.insert(wordsFrom.end(), std::make_pair(id, wordsFrom.size()));
 										if(!kptsFrom.empty())
 										{
-											wordsKptsFrom.push_back(kptsFrom[matchedIndex]);
+											wordsKptsFrom.push_back(kptsFrom[matchedIndex]); //Inserisce nelle parole keypoints all'indice matchato
 										}
-										words3From.push_back(kptsFrom3D[matchedIndex]);
-										wordsDescFrom.push_back(descriptorsFrom.row(matchedIndex));
+										words3From.push_back(kptsFrom3D[matchedIndex]); //Inserisce nelle parole keypoints 3D all'indice matchato
+										wordsDescFrom.push_back(descriptorsFrom.row(matchedIndex)); //Inserisce nelle parole descrittori all'indice matchato
 									}
 
+
+									//Stessa cosa per i keypoints 2D e 3D e descrittori per il frame successivo (il to)
 									wordsTo.insert(wordsTo.end(), std::make_pair(id, wordsTo.size()));
 									wordsKptsTo.push_back(kptsTo[i]);
 									wordsDescTo.push_back(descriptorsTo.row(i));
@@ -943,6 +971,8 @@ Transform RegistrationVis::computeTransformationImpl(
 										words3To.push_back(kptsTo3D[i]);
 									}
 								}
+
+								//Se non ci sono match
 								else
 								{
 									// gen fake ids
@@ -1315,7 +1345,7 @@ Transform RegistrationVis::computeTransformationImpl(
 					}
 				}
 			}
-			else if(descriptorsFrom.rows)
+			else if(descriptorsFrom.rows) //Se ci sono solo descriptorFrom
 			{
 				//just create fake words
 				UASSERT(kptsFrom3D.empty() || int(kptsFrom3D.size()) == descriptorsFrom.rows);
@@ -1404,6 +1434,8 @@ Transform RegistrationVis::computeTransformationImpl(
 					{
 						wordsB.insert(std::make_pair(iter->first, signatureB->getWordsKpts()[iter->second]));
 					}
+
+					//Genera parole 3D
 					std::map<int, cv::Point3f> inliers3D = util3d::generateWords3DMono(
 							wordsA,
 							wordsB,
@@ -1504,6 +1536,8 @@ Transform RegistrationVis::computeTransformationImpl(
 								words3B.insert(std::make_pair(iter->first, signatureB->getWords3()[iter->second]));
 							}
 						}
+
+						//CALCOLA L'EFFETTIVA TRASFORMAZIONE
 						transforms[dir] = util3d::estimateMotion3DTo2D(
 								words3A,
 								wordsB,
@@ -1632,6 +1666,7 @@ Transform RegistrationVis::computeTransformationImpl(
 			allMatches.resize(oi);
 		}
 
+		//Fa bundle adjustement e inserisce i link nel grafo
 		if(_bundleAdjustment > 0 &&
 			_estimationType < 2 &&
 			!transforms[0].isNull() &&
