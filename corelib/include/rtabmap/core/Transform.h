@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <opencv2/core/core.hpp>
+#include <pcl/common/common.h>
 
 namespace rtabmap {
 
@@ -95,6 +96,8 @@ public:
 	const float & x() const {return data()[3];}
 	const float & y() const {return data()[7];}
 	const float & z() const {return data()[11];}
+
+	inline pcl::PointXYZ position() const { return pcl::PointXYZ(data()[3], data()[7], data()[11]); } 
 
 	float theta() const;
 

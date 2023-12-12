@@ -15,6 +15,7 @@
 -- *******************************************************************
 CREATE TABLE Node (
 	id INTEGER NOT NULL,
+	region_id INTEGER NOT NULL,
 	map_id INTEGER NOT NULL,
 	weight INTEGER,
 	stamp FLOAT,

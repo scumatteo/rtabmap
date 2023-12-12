@@ -132,7 +132,7 @@ protected:
 	// Load objects
 	virtual void loadQuery(VWDictionary * dictionary, bool lastStateOnly = true) const;
 	virtual void loadLastNodesQuery(std::list<Signature *> & signatures) const;
-	virtual void loadSignaturesQuery(const std::list<int> & ids, std::list<Signature *> & signatures) const;
+	virtual void loadSignaturesQuery(const std::list<int> & ids, std::list<Signature *> & signatures, bool onlyValid = false) const;
 	virtual void loadWordsQuery(const std::set<int> & wordIds, std::list<VisualWord *> & vws) const;
 	virtual void loadLinksQuery(int signatureId, std::multimap<int, Link> & links, Link::Type type = Link::kUndef) const;
 
@@ -148,6 +148,11 @@ protected:
 	virtual void getNodesObservingLandmarkQuery(int landmarkId, std::map<int, Link> & nodes) const;
 	virtual void getNodeIdByLabelQuery(const std::string & label, int & id) const;
 	virtual void getAllLabelsQuery(std::map<int, std::string> & labels) const;
+
+	//regions
+	virtual int countRegionsQuery() const;
+	virtual void loadSignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const;
+	virtual void loadSignaturesForRegionByIdQuery(int signatureId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const;
 
 private:
 	std::string queryStepNode() const;
@@ -183,6 +188,10 @@ private:
 private:
 	void loadLinksQuery(std::list<Signature *> & signatures) const;
 	int loadOrSaveDb(sqlite3 *pInMemory, const std::string & fileName, int isSave) const;
+	void loadWordsForSignaturesQuery(std::list<Signature *> & signatures) const;
+	void loadCalibrationForSignaturesQuery(std::list<Signature *> & signatures) const;
+	void loadGlobalDescriptorsForSignaturesQuery(std::list<Signature *> & signatures) const;
+	void loadOnlySignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid = true) const;
 
 protected:
 	sqlite3 * _ppDb;

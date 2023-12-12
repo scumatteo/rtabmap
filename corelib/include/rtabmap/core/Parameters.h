@@ -871,6 +871,10 @@ class RTABMAP_CORE_EXPORT Parameters
     RTABMAP_PARAM(ImuFilter, ComplementaryDoBiasEstimation, bool,   true, "Parameter whether to do bias estimation or not.");
     RTABMAP_PARAM(ImuFilter, ComplementaryDoAdpativeGain,   bool,   true, "Parameter whether to do adaptive gain or not.");
 
+    RTABMAP_PARAM(Region, DesiredAverageCardinality,        int,    100,  "Desired average cardinality for a region (cluster).");
+    RTABMAP_PARAM(Region, MeshShapeFactor,                  float,  50,   "Mesh shape factor for clustering.");
+    RTABMAP_PARAM(Region, RadiusUpperBound,                 float,  80,   "Radius upper bound for a region (cluster).");
+
 public:
     virtual ~Parameters();
 

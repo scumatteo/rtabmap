@@ -160,7 +160,7 @@ public:
 	void load(VWDictionary * dictionary, bool lastStateOnly = true) const;
 	void loadLastNodes(std::list<Signature *> & signatures) const; // returned signatures must be freed after usage
 	Signature * loadSignature(int id, bool * loadedFromTrash = 0); // returned signature must be freed after usage, call loadSignatures() instead if more than one signature should be loaded
-	void loadSignatures(const std::list<int> & ids, std::list<Signature *> & signatures, std::set<int> * loadedFromTrash = 0); // returned signatures must be freed after usage
+	void loadSignatures(const std::list<int> & ids, std::list<Signature *> & signatures, std::set<int> * loadedFromTrash = 0, bool onlyValid = true); // returned signatures must be freed after usage
 	void loadWords(const std::set<int> & wordIds, std::list<VisualWord *> & vws); // returned words must be freed after usage
 
 	// Specific queries...
@@ -182,6 +182,11 @@ public:
 	void getNodesObservingLandmark(int landmarkId, std::map<int, Link> & nodes) const;
 	void getNodeIdByLabel(const std::string & label, int & id) const;
 	void getAllLabels(std::map<int, std::string> & labels) const;
+
+	//regions
+	int countRegions() const;
+	void loadSignaturesByRegion(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const;
+	void loadSignaturesForRegionById(int signatureId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const;
 
 protected:
 	DBDriver(const ParametersMap & parameters = ParametersMap());
@@ -267,7 +272,7 @@ protected:
 	// Load objects
 	virtual void loadQuery(VWDictionary * dictionary, bool lastStateOnly = true) const = 0;
 	virtual void loadLastNodesQuery(std::list<Signature *> & signatures) const = 0;
-	virtual void loadSignaturesQuery(const std::list<int> & ids, std::list<Signature *> & signatures) const = 0;
+	virtual void loadSignaturesQuery(const std::list<int> & ids, std::list<Signature *> & signatures, bool onlyValid = false) const = 0;
 	virtual void loadWordsQuery(const std::set<int> & wordIds, std::list<VisualWord *> & vws) const = 0;
 	virtual void loadLinksQuery(int signatureId, std::multimap<int, Link> & links, Link::Type type = Link::kUndef) const = 0;
 
@@ -283,6 +288,11 @@ protected:
 	virtual void getNodesObservingLandmarkQuery(int landmarkId, std::map<int, Link> & nodes) const = 0;
 	virtual void getNodeIdByLabelQuery(const std::string & label, int & id) const = 0;
 	virtual void getAllLabelsQuery(std::map<int, std::string> & labels) const = 0;
+
+	//regions
+	virtual int countRegionsQuery() const = 0;
+	virtual void loadSignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const = 0;
+	virtual void loadSignaturesForRegionByIdQuery(int signatureId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const = 0;
 
 private:
 	//non-abstract methods

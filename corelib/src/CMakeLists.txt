@@ -44,6 +44,7 @@ SET(SRC_FILES
     VWDictionary.cpp
     BayesFilter.cpp
     Parameters.cpp
+	Region.cpp
     Signature.cpp
     Features2d.cpp
     Transform.cpp

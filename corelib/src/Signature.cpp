@@ -38,6 +38,7 @@ namespace rtabmap
 
 Signature::Signature() :
 	_id(0), // invalid id
+	_regionId(-1),
 	_mapId(-1),
 	_stamp(0.0),
 	_weight(0),
@@ -59,6 +60,7 @@ Signature::Signature(
 		const Transform & groundTruthPose,
 		const SensorData & sensorData):
 	_id(id),
+	_regionId(-1),
 	_mapId(mapId),
 	_stamp(stamp),
 	_weight(weight),
@@ -81,6 +83,7 @@ Signature::Signature(
 
 Signature::Signature(const SensorData & data) :
 	_id(data.id()),
+	_regionId(-1),
 	_mapId(-1),
 	_stamp(data.stamp()),
 	_weight(0),

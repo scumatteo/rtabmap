@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "rtabmap/core/SensorData.h"
 #include "rtabmap/core/Link.h"
 #include "rtabmap/core/Features2d.h"
+#include "rtabmap/core/Region.h"
 #include <typeinfo>
 #include <list>
 #include <map>
@@ -59,6 +60,7 @@ class RegistrationVis;
 class Stereo;
 class OccupancyGrid;
 class MarkerDetector;
+class Region;
 
 class RTABMAP_CORE_EXPORT Memory
 {
@@ -139,7 +141,7 @@ public:
 			float radius,
 			const std::map<int, Transform> & optimizedPoses,
 			int maxGraphDepth) const;
-	void deleteLocation(int locationId, std::list<int> * deletedWords = 0);
+	void deleteLocation(int locationId, bool keepLinkedToGraph = false, std::list<int> * deletedWords = 0);
 	void saveLocationData(int locationId);
 	void removeLink(int idA, int idB);
 	void removeRawData(int id, bool image = true, bool scan = true, bool userData = true);
@@ -258,6 +260,24 @@ public:
 			const std::map<int, Transform> & poses,
 			RegistrationInfo * info = 0);
 
+	//regions	
+	inline int currentRegionId() { return this->_currentRegionId; }
+	inline void incrementCurrentRegionId() { this->_currentRegionId++; }
+	inline void setCurrentRegionId(int regionId) { this->_currentRegionId = regionId; }
+	int loadInitialRegionId();
+
+	inline size_t totalConnections() { return this->_totalConnections; }
+	inline float totalMesh() { return this->_totalMesh; }
+	inline float radiusUpperBound() { return this->_radiusUpperBound; }
+	inline float defaultScattering() { return this->_defaultScattering; }
+	inline float meshShapeFactor() { return this->_meshShapeFactor; }
+	inline float clusteringThreshold() { return this->_clusteringThreshold; }
+	inline int desiredAverageCardinality() { return this->_desiredAverageCardinality; }
+	inline float scattering1Const() { return this->_scattering1Const; }
+
+	void setRegionToSignature(int id, int regionId);
+	void assignRegion();
+
 private:
 	void preUpdate();
 	void addSignatureToStm(Signature * signature, const cv::Mat & covariance);
@@ -288,6 +308,22 @@ private:
 	void enableWordsRef(const std::list<int> & signatureIds);
 	void cleanUnusedWords();
 	int getNi(int signatureId) const;
+
+	//regions
+	void updateDefaultScattering();
+	void updateClusteringThreshold();
+	void updateGlobalClusteringParams();
+	inline void setLastValidSignature() { this->_lastValidSignature = this->_lastSignature; }
+	void getSignaturesForRegion(int regionId, std::list<Signature*> &signaturesForRegion);
+	inline bool isSignatureCachedForClustering(int id) const { return this->_clusteringSignatures.count(id); }
+	void cacheSignatureForClustering(Signature* signature);
+	void cacheSignaturesForClustering(const std::list<Signature*> &signatures);
+	void clearCachedSignaturesForClustering();
+	Region *getRegion(int regionId);
+
+	void traverseRegion(Signature *currentSignature, std::set<int> &visitedIds);
+	bool isRemovableFromRegion(Signature *signature);
+	void moveFromRegion(Signature *signature, std::unordered_map<int, int> &justMoved);
 
 protected:
 	DBDriver * _dbDriver;
@@ -374,6 +410,19 @@ private:
 	OccupancyGrid * _occupancy;
 
 	MarkerDetector * _markerDetector;
+
+	//regions
+	std::unordered_map<int, Signature *> _clusteringSignatures;
+	Signature *_lastValidSignature;
+	int _currentRegionId;
+	size_t _totalConnections;
+	float _totalMesh;
+	float _radiusUpperBound;
+	float _defaultScattering;
+	float _meshShapeFactor;
+	float _clusteringThreshold;
+	int _desiredAverageCardinality;
+	float _scattering1Const;
 };
 
 } // namespace rtabmap

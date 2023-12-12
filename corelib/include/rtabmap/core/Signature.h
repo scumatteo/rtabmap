@@ -139,6 +139,24 @@ public:
 
 	unsigned long getMemoryUsed(bool withSensorData=true) const; // Return memory usage in Bytes
 
+	/**
+	 * Setter for the region id of the signature.
+	 * 
+	 * @param regionId the region id.
+	*/
+	inline void setRegionId(int regionId) { this->_regionId = regionId; }
+
+	/**
+	 * Getter of the signature's region id.
+	 * 
+	 * @return the region id.
+	*/
+	inline int regionId() const { return this->_regionId; }
+
+	inline void addNonValidSuccessiveId(int id) { this->_nonValidSuccessiveIds.emplace_back(id); }
+
+	inline const std::vector<int> &nonValidSuccessiveIds() const { return this->_nonValidSuccessiveIds; }
+
 private:
 	int _id;
 	int _mapId;
@@ -167,6 +185,9 @@ private:
 	std::vector<float> _velocity;
 
 	SensorData _sensorData;
+
+	int _regionId;
+	std::vector<int> _nonValidSuccessiveIds;
 };
 
 } // namespace rtabmap

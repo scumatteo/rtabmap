@@ -3858,6 +3858,8 @@ bool Rtabmap::process(
 	timeMapOptimization = timer.ticks();
 	ULOGGER_INFO("timeMapOptimization=%fs", timeMapOptimization);
 
+	this->_memory->assignRegion();
+
 	//============================================================
 	// Prepare statistics
 	//============================================================
@@ -4176,8 +4178,17 @@ bool Rtabmap::process(
 			signaturesRemoved.push_back(signature->id());
 			_memory->deleteLocation(signature->id());
 		}
+		else if (signature->getWeight() == -1)
+		{
+			UINFO("Ignoring location %d because invalid!", signature->id());
+			_memory->setRegionToSignature(signature->id(), _memory->currentRegionId());
+			signaturesRemoved.push_back(signature->id());
+			_memory->deleteLocation(signature->id(), true);
+		}
 		else
 		{
+
+			
 			_memory->saveLocationData(signature->id());
 		}
 	}
@@ -4232,6 +4243,7 @@ bool Rtabmap::process(
 			_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
 		}
 	}
+
 	_lastProcessTime = totalTime;
 
 	// cleanup cached gps values
