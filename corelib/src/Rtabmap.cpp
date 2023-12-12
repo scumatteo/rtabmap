@@ -4181,14 +4181,12 @@ bool Rtabmap::process(
 		else if (signature->getWeight() == -1)
 		{
 			UINFO("Ignoring location %d because invalid!", signature->id());
-			_memory->setRegionToSignature(signature->id(), _memory->currentRegionId());
 			signaturesRemoved.push_back(signature->id());
 			_memory->deleteLocation(signature->id(), true);
 		}
 		else
 		{
 
-			
 			_memory->saveLocationData(signature->id());
 		}
 	}
@@ -4245,6 +4243,13 @@ bool Rtabmap::process(
 	}
 
 	_lastProcessTime = totalTime;
+
+	for(const auto &elem : _memory->getStMem()){
+		ULOGGER_DEBUG("Id in STM: %d", elem);
+	}
+	for(const auto &elem : _memory->getWorkingMem()){
+		ULOGGER_DEBUG("Id in WM: %d", elem.first);
+	}
 
 	// cleanup cached gps values
 	for(std::list<int>::iterator iter=signaturesRemoved.begin(); iter!=signaturesRemoved.end() && _gpsGeocentricCache.size(); ++iter)

@@ -6764,8 +6764,6 @@ namespace rtabmap
 				this->loadGlobalDescriptorsForSignaturesQuery(signatures);
 				ULOGGER_DEBUG("Time load %d global descriptors=%fs", (int)signatures.size(), timer.ticks());
 			}
-
-			ULOGGER_DEBUG("Time load region=%fs", timer.ticks());
 		}
 	}
 
@@ -6920,7 +6918,7 @@ namespace rtabmap
 				// create the node
 				if (id)
 				{
-					ULOGGER_DEBUG("Creating %d (map=%d, pose=%s)", id, mapId, pose.prettyPrint().c_str());
+					ULOGGER_DEBUG("Creating %d (map=%d, pose=%s, region=%d)", id, mapId, pose.prettyPrint().c_str(), regionId);
 					Signature *s = new Signature(
 						id,
 						mapId,
@@ -6989,10 +6987,13 @@ namespace rtabmap
 				regionId = sqlite3_column_int(ppStmt, 0); // Signature Id
 				ULOGGER_DEBUG("DBDriverSqlite3::loadSignaturesForRegionByIdQuery retrieved region id=%d", regionId);
 				this->loadSignaturesByRegionQuery(regionId, signatures, onlyValid, loadAll);
+				rc = sqlite3_step(ppStmt);
 			}
 			else {
 				ULOGGER_DEBUG("DBDriverSqlite3::loadSignaturesForRegionByIdQuery no valid signature");
 			}
+
+			ULOGGER_DEBUG("DBDriverSqlite3::loadSignaturesForRegionByIdQuery rc=%d", rc);
 
 			UASSERT_MSG(rc == SQLITE_DONE, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
 			rc = sqlite3_finalize(ppStmt);

@@ -127,6 +127,7 @@ namespace rtabmap
 													  _tfIdfLikelihoodUsed(Parameters::defaultKpTfIdfLikelihoodUsed()),
 													  _parallelized(Parameters::defaultKpParallelized()),
 													  _registrationVis(0),
+													  _lastValidSignature(0),
 													  _currentRegionId(-1),
 													  _totalConnections(0),
 													  _totalMesh(0),
@@ -2453,64 +2454,69 @@ namespace rtabmap
 			}
 
 			// it is a bad signature (not saved), remove links!
-			if (keepLinkedToGraph && (!s->isSaved() && s->isBadSignature() && _badSignaturesIgnored))
-			{
-				keepLinkedToGraph = false;
-			}
+			// if (keepLinkedToGraph && (!s->isSaved() && s->isBadSignature() && _badSignaturesIgnored))
+			// {
+			// 	keepLinkedToGraph = false;
+			// }
 
+			
+			UASSERT_MSG(this->isInSTM(s->id()),
+						uFormat("Deleting location (%d) outside the "
+								"STM is not implemented!",
+								s->id())
+							.c_str());
+			const std::multimap<int, Link> &links = s->getLinks();
+			for (std::multimap<int, Link>::const_iterator iter = links.begin(); iter != links.end(); ++iter)
+			{
+				if (iter->second.from() != iter->second.to() && iter->first > 0)
+				{
+					Signature *sTo = this->_getSignature(iter->first);
+					// neighbor to s
+					UASSERT_MSG(sTo != 0,
+								uFormat("A neighbor (%d) of the deleted location %d is "
+										"not found in WM/STM! Are you deleting a location "
+										"outside the STM?",
+										iter->first, s->id())
+									.c_str());
+
+					if (iter->first > s->id() && links.size() > 1 && sTo->hasLink(s->id()))
+					{
+						UWARN("Link %d of %d is newer, removing neighbor link "
+								"may split the map!",
+								iter->first, s->id());
+					}
+
+					// child
+					if (iter->second.type() == Link::kGlobalClosure && s->id() > sTo->id() && s->getWeight() > 0)
+					{
+						sTo->setWeight(sTo->getWeight() + s->getWeight()); // copy weight
+					}
+
+					sTo->removeLink(s->id());
+				}
+			}
 			// If not saved to database
 			if (!keepLinkedToGraph)
 			{
-				UASSERT_MSG(this->isInSTM(s->id()),
-							uFormat("Deleting location (%d) outside the "
-									"STM is not implemented!",
-									s->id())
-								.c_str());
-				const std::multimap<int, Link> &links = s->getLinks();
-				for (std::multimap<int, Link>::const_iterator iter = links.begin(); iter != links.end(); ++iter)
-				{
-					if (iter->second.from() != iter->second.to() && iter->first > 0)
-					{
-						Signature *sTo = this->_getSignature(iter->first);
-						// neighbor to s
-						UASSERT_MSG(sTo != 0,
-									uFormat("A neighbor (%d) of the deleted location %d is "
-											"not found in WM/STM! Are you deleting a location "
-											"outside the STM?",
-											iter->first, s->id())
-										.c_str());
-
-						if (iter->first > s->id() && links.size() > 1 && sTo->hasLink(s->id()))
-						{
-							UWARN("Link %d of %d is newer, removing neighbor link "
-								  "may split the map!",
-								  iter->first, s->id());
-						}
-
-						// child
-						if (iter->second.type() == Link::kGlobalClosure && s->id() > sTo->id() && s->getWeight() > 0)
-						{
-							sTo->setWeight(sTo->getWeight() + s->getWeight()); // copy weight
-						}
-
-						sTo->removeLink(s->id());
-					}
-				}
-				s->removeLinks(true); // remove all links, but keep self referring link
-				s->removeLandmarks(); // remove all landmarks
-				s->setWeight(-9);	  // invalid
-				s->setLabel("");	  // reset label
+				// s->removeLinks(true); // remove all links, but keep self referring link
+				// s->removeLandmarks(); // remove all landmarks
+				s->setWeight(-9); // invalid
+				// s->setLabel("");	  // reset label
 			}
-			else
-			{
-				// Make sure that virtual links are removed.
-				// It should be called before the signature is
-				// removed from _signatures below.
-				removeVirtualLinks(s->id());
-			}
+			// else
+			// {
+			// 	// Make sure that virtual links are removed.
+			// 	// It should be called before the signature is
+			// 	// removed from _signatures below.
+			// 	removeVirtualLinks(s->id());
+			// }
+			s->removeLinks(true); // remove all links, but keep self referring link
+			s->removeLandmarks(); // remove all landmarks
+			// s->setWeight(-9); // invalid
+			s->setLabel("");	  // reset label
 
 			this->disableWordsRef(s->id());
-			if (!keepLinkedToGraph && _vwd->isIncremental())
+			if (_vwd->isIncremental())
 			{
 				std::list<int> keys = uUniqueKeys(s->getWords());
 				for (std::list<int>::const_iterator i = keys.begin(); i != keys.end(); ++i)
@@ -6395,12 +6401,15 @@ namespace rtabmap
 
 	void Memory::updateDefaultScattering()
 	{
+		ULOGGER_DEBUG("%f %f %f", this->_totalMesh, this->_meshShapeFactor, Region::K_2_PI);
 		this->_defaultScattering = this->_totalMesh * this->_meshShapeFactor / Region::K_2_PI;
+		ULOGGER_DEBUG("Default scattering=%f", this->_defaultScattering);
 	}
 
 	void Memory::updateClusteringThreshold()
 	{
 		this->_clusteringThreshold = this->_defaultScattering * this->_scattering1Const / 2;
+		ULOGGER_DEBUG("Clustering threshold=%f", this->_clusteringThreshold);
 	}
 
 	void Memory::updateGlobalClusteringParams()
@@ -6433,14 +6442,19 @@ namespace rtabmap
 
 	void Memory::setRegionToSignature(int id, int regionId)
 	{
-		this->_signatures.at(id)->setRegionId(regionId);
+		this->_signatures.at(id)->setRegionId(regionId); // TODO
 	}
 
 	void Memory::cacheSignatureForClustering(Signature *signature)
 	{
 		if (!this->isSignatureCachedForClustering(signature->id()))
 		{
+			ULOGGER_DEBUG("Cached signature id=%d", signature->id());
 			this->_clusteringSignatures.insert({signature->id(), signature});
+		}
+		else
+		{
+			ULOGGER_DEBUG("Signature id=%d already cached", signature->id());
 		}
 	}
 
@@ -6458,14 +6472,11 @@ namespace rtabmap
 		for (auto it = this->_clusteringSignatures.begin(); it != this->_clusteringSignatures.end();)
 		{
 			Signature *s = this->_clusteringSignatures[it->first];
+			it = this->_clusteringSignatures.erase(it);
 
 			if (this->isInLTM(s->id()))
 			{
-				it = this->_clusteringSignatures.erase(it);
 				delete s;
-			}
-			else {
-				++it;
 			}
 		}
 	}
@@ -6477,7 +6488,7 @@ namespace rtabmap
 			visitedIds.insert(currentSignature->id());
 			for (const auto &l : currentSignature->getLinks())
 			{
-				if(l.first == currentSignature->id()) //link to itself
+				if (l.first == currentSignature->id()) // link to itself
 				{
 					continue;
 				}
@@ -6511,7 +6522,7 @@ namespace rtabmap
 		Signature *signatureConnected = 0;
 		for (const auto &l : signature->getLinks())
 		{
-			if(l.first == signature->id()) //link to itself
+			if (l.first == signature->id()) // link to itself
 			{
 				continue;
 			}
@@ -6544,6 +6555,7 @@ namespace rtabmap
 
 	void Memory::moveFromRegion(Signature *signature, std::unordered_map<int, int> &justMoved)
 	{
+		ULOGGER_DEBUG("Move signature id=%d", signature->id());
 		UTimer timer;
 		timer.start();
 		if (justMoved.count(signature->id())) // signature just moved
@@ -6552,6 +6564,7 @@ namespace rtabmap
 		}
 		if (this->isRemovableFromRegion(signature))
 		{
+			ULOGGER_DEBUG("Is removable");
 			Region *initialRegion = this->getRegion(signature->regionId()); // TODO
 			float minDeltaScattering = 1e10;
 			Region *candidate = 0;
@@ -6559,10 +6572,11 @@ namespace rtabmap
 
 			for (const auto &l : signature->getLinks())
 			{
-				if(l.first == signature->id()) //link to itself
+				if (l.first == signature->id()) // link to itself
 				{
 					continue;
 				}
+				ULOGGER_DEBUG("Move link id=%d", l.first);
 				if (!this->isSignatureCachedForClustering(l.first)) // cached
 				{
 					std::list<Signature *> signatures;
@@ -6577,9 +6591,7 @@ namespace rtabmap
 					}
 				}
 
-				ULOGGER_DEBUG("Move link id=%d", l.first);
-
-				if(!this->isSignatureCachedForClustering(l.first)) //signature is not valid
+				if (!this->isSignatureCachedForClustering(l.first)) // signature is not valid
 				{
 					continue;
 				}
@@ -6628,11 +6640,13 @@ namespace rtabmap
 
 				if (updatedInitialRegion->scattering2() - initialRegion->scattering2() + minDeltaScattering < 0)
 				{
+
+					ULOGGER_DEBUG("Moved signature id=%d to region=%d", signature->id(), signature->regionId());
 					justMoved.insert({signature->id(), signature->regionId()});
 
 					for (const auto &l : signature->getLinks())
 					{
-						if(l.first == signature->id()) //link to itself
+						if (l.first == signature->id()) // link to itself
 						{
 							continue;
 						}
@@ -6677,26 +6691,25 @@ namespace rtabmap
 				this->_lastSignature->setRegionId(initialRegionId); // set signature region
 			}
 			else
-			{ 
+			{
 				ULOGGER_DEBUG("Clustering valid node, id=%d", this->_lastSignature->id());
 				std::set<int> regionIdsConnected;
 
 				this->cacheSignatureForClustering(this->_lastSignature);
 
-				size_t newGaps = 0;
+				float newGaps = 0;
+				size_t newConnections = 0;
 				pcl::PointXYZ signaturePos = this->_lastSignature->getPose().position();
-
-				ULOGGER_DEBUG("Current node id=%d", this->_lastSignature->id());
 
 				for (const auto &l : this->_lastSignature->getLinks()) // always in WM because connected to the current signature
 				{
-					if(l.first == this->_lastSignature->id()) //link to itself
+					if (l.first == this->_lastSignature->id()) // link to itself
 					{
 						continue;
 					}
+
+					Signature *s = this->_signatures[l.first];
 					
-					ULOGGER_DEBUG("Clustering signature connected to id=%d", l.first);
-					Signature *s = this->_signatures.at(l.first);
 					ULOGGER_DEBUG("Link to id=%d", l.first);
 					ULOGGER_DEBUG("Weight=%d", s->getWeight());
 					pcl::PointXYZ linkedPos = s->getPose().position();
@@ -6704,18 +6717,25 @@ namespace rtabmap
 					newGaps += sqrt(pow(signaturePos.x - linkedPos.x, 2) +
 									pow(signaturePos.y - linkedPos.y, 2) +
 									pow(signaturePos.z - linkedPos.z, 2));
+					newConnections++;
 
 					regionIdsConnected.insert(s->regionId()); // regions to retrieve from db
 					this->cacheSignatureForClustering(s);
 				}
 
-				this->_totalMesh = (this->_totalMesh * this->_totalConnections + newGaps) / (this->_totalConnections + this->_lastSignature->getLinks().size());
-				this->_totalConnections = this->_totalConnections + this->_lastSignature->getLinks().size();
+				ULOGGER_DEBUG("New gaps=%f", newGaps);
+				
+				this->_totalMesh = (this->_totalMesh * this->_totalConnections + newGaps) / (this->_totalConnections + newConnections);
+				this->_totalConnections = this->_totalConnections + newConnections;
+
+				ULOGGER_DEBUG("Total mesh=%f", this->_totalMesh);
+				ULOGGER_DEBUG("Total connections=%d", this->_totalConnections);
+
 				this->updateGlobalClusteringParams();
 
 				for (const auto &id : regionIdsConnected) // retrieve signatures for these regions
 				{
-					ULOGGER_DEBUG("Region id %d connected", id);
+					ULOGGER_DEBUG("Region connected id=%d", id);
 					std::list<Signature *> signaturesRetrieved;
 					if (_dbDriver)
 					{
@@ -6738,7 +6758,7 @@ namespace rtabmap
 				std::set<int> regionsVisitedIds;
 				for (const auto &l : this->_lastSignature->getLinks()) // for each link (here is already retrieved each connected region)
 				{
-					if(l.first == this->_lastSignature->id()) //link to itself
+					if (l.first == this->_lastSignature->id()) // link to itself
 					{
 						continue;
 					}
@@ -6757,6 +6777,27 @@ namespace rtabmap
 						Region *updatedRegion = this->getRegion(s->regionId());
 						this->_lastSignature->setRegionId(-1);
 
+						float deltaScattering = updatedRegion->scattering2() - region->scattering2();
+						float defaultThreshold = this->_clusteringThreshold + this->_defaultScattering;
+						float distance = (pow(updatedRegion->centroid().x - signaturePos.x, 2) +
+										  pow(updatedRegion->centroid().y - signaturePos.y, 2) +
+							  			  pow(updatedRegion->centroid().z - signaturePos.z, 2));
+						float radius2 = pow(this->_radiusUpperBound, 2);
+
+						// ULOGGER_DEBUG("Delta scattering=%f", deltaScattering);
+						// ULOGGER_DEBUG("Default threshold=%f", defaultThreshold);
+						// ULOGGER_DEBUG("Distance=%f", distance);
+						// ULOGGER_DEBUG("Radius^2=%f", radius2);
+						// ULOGGER_DEBUG("Scattering=%f", updatedRegion->scattering2());
+						// ULOGGER_DEBUG("Min scattering=%f", minScattering);
+
+						ULOGGER_DEBUG("Clustering condition: (%f < %f) && (%f < %f) && (%f < %f)", deltaScattering, 
+																								   defaultThreshold, 
+																								   distance, 
+																								   radius2, 
+																								   updatedRegion->scattering2(), 
+																								   minScattering);
+
 						// std::cout << "SCATTERING +: " << updatedRegion->scattering2() - region->scattering2() << "\n";
 						// std::cout << "SECOND: " << this->_memory->clusteringThreshold() + this->_memory->defaultScattering() << "\n";
 						// std::cout << "DISTANCE: " << (pow(updatedRegion->centroid().x - signaturePos.x, 2) +
@@ -6765,12 +6806,11 @@ namespace rtabmap
 						// std::cout << "RADIUS: " << pow(this->_memory->radiusUpperBound(), 2) << "\n";
 						// std::cout << "SCATTERING: " << updatedRegion->scattering2();
 
-						if ((updatedRegion->scattering2() - region->scattering2() < this->_clusteringThreshold + this->_defaultScattering) &&
-							((pow(updatedRegion->centroid().x - signaturePos.x, 2) +
-							  pow(updatedRegion->centroid().y - signaturePos.y, 2) +
-							  pow(updatedRegion->centroid().z - signaturePos.z, 2)) < pow(this->_radiusUpperBound, 2)) &&
-							updatedRegion->scattering2() < minScattering)
+						if ((deltaScattering < defaultThreshold) &&
+							(distance < radius2) &&
+							(updatedRegion->scattering2() < minScattering))
 						{
+							ULOGGER_DEBUG("New candidate id=%d", updatedRegion->id());
 							minScattering = updatedRegion->scattering2();
 							candidate = updatedRegion;
 							delete region;
@@ -6783,12 +6823,14 @@ namespace rtabmap
 				}
 				if (candidate) // if a candidate is found
 				{
+					ULOGGER_DEBUG("Candidate id=%d", candidate->id());
 					this->_lastSignature->setRegionId(candidate->id());
 					delete candidate;
 				}
 				else // new region
 				{
 					this->_currentRegionId++;
+					ULOGGER_DEBUG("No candidate found. New region id=%d", this->_currentRegionId);
 					this->_lastSignature->setRegionId(this->_currentRegionId);
 				}
 
@@ -6796,7 +6838,7 @@ namespace rtabmap
 				this->moveFromRegion(this->_lastSignature, justMoved);
 				for (const auto &l : this->_lastSignature->getLinks()) // connected to the current signature, already cached
 				{
-					if(l.first == this->_lastSignature->id()) //link to itself
+					if (l.first == this->_lastSignature->id()) // link to itself
 					{
 						continue;
 					}
@@ -6805,8 +6847,14 @@ namespace rtabmap
 				}
 
 				this->clearCachedSignaturesForClustering();
-
 			}
+		}
+		else if(this->_lastSignature->getWeight() == -1)
+		{
+			this->_lastSignature->setRegionId(this->_currentRegionId);
+		}
+		else {
+			UFATAL("Memory::assignRegion: never suppose to be here");
 		}
 
 		ULOGGER_DEBUG("Time for clustering=%fs", timer.ticks());

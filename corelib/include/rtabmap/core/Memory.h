@@ -413,7 +413,7 @@ private:
 
 	//regions
 	std::unordered_map<int, Signature *> _clusteringSignatures;
-	Signature *_lastValidSignature;
+	Signature * _lastValidSignature;
 	int _currentRegionId;
 	size_t _totalConnections;
 	float _totalMesh;
