@@ -153,6 +153,7 @@ protected:
 	virtual int countRegionsQuery() const;
 	virtual void loadSignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const;
 	virtual void loadSignaturesForRegionByIdQuery(int signatureId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const;
+	virtual void updateRegionsQuery(std::unordered_map<int, int> &signaturesMoved) const;
 
 private:
 	std::string queryStepNode() const;

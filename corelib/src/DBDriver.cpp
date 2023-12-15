@@ -1438,4 +1438,11 @@ namespace rtabmap
 		}
 	}
 
+	void DBDriver::updateRegions(std::unordered_map<int, int> &signaturesMoved) const
+	{
+		_dbSafeAccessMutex.lock();
+		this->updateRegionsQuery(signaturesMoved);
+		_dbSafeAccessMutex.unlock();
+	}
+
 } // namespace rtabmap

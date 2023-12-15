@@ -6968,7 +6968,8 @@ namespace rtabmap
 			int regionId = -1;
 
 			query << "SELECT region_id FROM Node WHERE id=?";
-			if(onlyValid){
+			if (onlyValid)
+			{
 				query << " AND weight >= 0";
 			}
 			query << ";";
@@ -6989,13 +6990,56 @@ namespace rtabmap
 				this->loadSignaturesByRegionQuery(regionId, signatures, onlyValid, loadAll);
 				rc = sqlite3_step(ppStmt);
 			}
-			else {
+			else
+			{
 				ULOGGER_DEBUG("DBDriverSqlite3::loadSignaturesForRegionByIdQuery no valid signature");
 			}
 
 			ULOGGER_DEBUG("DBDriverSqlite3::loadSignaturesForRegionByIdQuery rc=%d", rc);
 
 			UASSERT_MSG(rc == SQLITE_DONE, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+			rc = sqlite3_finalize(ppStmt);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+		}
+	}
+
+	void DBDriverSqlite3::updateRegionsQuery(std::unordered_map<int, int> &signaturesMoved) const
+	{
+		if (_ppDb)
+		{
+			ULOGGER_DEBUG("DBDriverSqlite3::updateRegionsQuery");
+
+			std::string type;
+			int rc = SQLITE_OK;
+			sqlite3_stmt *ppStmt = 0;
+			std::stringstream query;
+			unsigned int loaded = 0;
+
+			query << "UPDATE Node SET region_id=? WHERE id>=? AND id<(SELECT MIN(id) FROM Node WHERE id>? AND weight=0);";
+
+			rc = sqlite3_prepare_v2(_ppDb, query.str().c_str(), -1, &ppStmt, 0);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			for(const auto &id_region : signaturesMoved)
+			{
+				int index = 1;
+				rc = sqlite3_bind_int(ppStmt, index++, id_region.second);
+				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+				rc = sqlite3_bind_int(ppStmt, index++, id_region.first);
+				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+				rc = sqlite3_bind_int(ppStmt, index++, id_region.first);
+				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+				// Process the result if one
+				rc = sqlite3_step(ppStmt);
+				UASSERT_MSG(rc == SQLITE_DONE, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+				rc = sqlite3_reset(ppStmt);
+				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+			}
+
 			rc = sqlite3_finalize(ppStmt);
 			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
 		}

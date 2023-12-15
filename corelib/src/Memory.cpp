@@ -6553,12 +6553,12 @@ namespace rtabmap
 		return (visitedIds.size() == (signaturesForRegion.size() - 1));
 	}
 
-	void Memory::moveFromRegion(Signature *signature, std::unordered_map<int, int> &justMoved)
+	void Memory::moveFromRegion(Signature *signature, std::unordered_map<int, int> &signaturesMoved)
 	{
 		ULOGGER_DEBUG("Move signature id=%d", signature->id());
 		UTimer timer;
 		timer.start();
-		if (justMoved.count(signature->id())) // signature just moved
+		if (signaturesMoved.count(signature->id())) // signature just moved
 		{
 			return;
 		}
@@ -6642,7 +6642,7 @@ namespace rtabmap
 				{
 
 					ULOGGER_DEBUG("Moved signature id=%d to region=%d", signature->id(), signature->regionId());
-					justMoved.insert({signature->id(), signature->regionId()});
+					signaturesMoved.insert({signature->id(), signature->regionId()});
 
 					for (const auto &l : signature->getLinks())
 					{
@@ -6655,7 +6655,7 @@ namespace rtabmap
 						{
 							if (this->_clusteringSignatures[l.first]->regionId() == initialRegion->id())
 							{
-								this->moveFromRegion(this->_clusteringSignatures[l.first], justMoved);
+								this->moveFromRegion(this->_clusteringSignatures[l.first], signaturesMoved);
 							}
 						}
 					}
@@ -6834,8 +6834,8 @@ namespace rtabmap
 					this->_lastSignature->setRegionId(this->_currentRegionId);
 				}
 
-				std::unordered_map<int, int> justMoved; // id, regionId
-				this->moveFromRegion(this->_lastSignature, justMoved);
+				std::unordered_map<int, int> signaturesMoved; // id, regionId
+				this->moveFromRegion(this->_lastSignature, signaturesMoved);
 				for (const auto &l : this->_lastSignature->getLinks()) // connected to the current signature, already cached
 				{
 					if (l.first == this->_lastSignature->id()) // link to itself
@@ -6843,7 +6843,16 @@ namespace rtabmap
 						continue;
 					}
 					Signature *s = this->_clusteringSignatures[l.first];
-					this->moveFromRegion(s, justMoved);
+					this->moveFromRegion(s, signaturesMoved);
+				}
+
+				if (_dbDriver)
+				{
+					this->_dbDriver->updateRegions(signaturesMoved);
+				}
+				else
+				{
+					UFATAL("DBDriver not valid in Memory assignRegion");
 				}
 
 				this->clearCachedSignaturesForClustering();

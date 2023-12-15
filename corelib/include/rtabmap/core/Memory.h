@@ -323,7 +323,7 @@ private:
 
 	void traverseRegion(Signature *currentSignature, std::set<int> &visitedIds);
 	bool isRemovableFromRegion(Signature *signature);
-	void moveFromRegion(Signature *signature, std::unordered_map<int, int> &justMoved);
+	void moveFromRegion(Signature *signature, std::unordered_map<int, int> &signaturesMoved);
 
 protected:
 	DBDriver * _dbDriver;
