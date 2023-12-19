@@ -151,7 +151,7 @@ protected:
 
 	//regions
 	virtual int countRegionsQuery() const;
-	virtual void loadSignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const;
+	virtual void loadSignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true, const std::set<int> &excludedIds = std::set<int>()) const;
 	virtual void loadSignaturesForRegionByIdQuery(int signatureId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const;
 	virtual void updateRegionsQuery(std::unordered_map<int, int> &signaturesMoved) const;
 
@@ -192,7 +192,7 @@ private:
 	void loadWordsForSignaturesQuery(std::list<Signature *> & signatures) const;
 	void loadCalibrationForSignaturesQuery(std::list<Signature *> & signatures) const;
 	void loadGlobalDescriptorsForSignaturesQuery(std::list<Signature *> & signatures) const;
-	void loadOnlySignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid = true) const;
+	void loadOnlySignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, const std::set<int> &excludedIds = std::set<int>()) const;
 
 protected:
 	sqlite3 * _ppDb;

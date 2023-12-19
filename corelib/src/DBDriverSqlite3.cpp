@@ -438,6 +438,17 @@ namespace rtabmap
 			return false;
 		}
 
+		const char* walPragma = "PRAGMA journal_mode=WAL;";
+		rc = sqlite3_exec(_ppDb, walPragma, nullptr, nullptr, nullptr);
+
+		if (rc != SQLITE_OK) {
+			ULOGGER_WARN("Failed to set WAL mode");
+			sqlite3_close(_ppDb);
+			return false;
+		}
+
+		ULOGGER_DEBUG("WAL mode set successfully.");
+
 		// Set database optimizations
 		this->setCacheSize(_cacheSize);		// this will call the SQL
 		this->setJournalMode(_journalMode); // this will call the SQL
@@ -6738,13 +6749,14 @@ namespace rtabmap
 	void DBDriverSqlite3::loadSignaturesByRegionQuery(int regionId,
 													  std::list<Signature *> &signatures,
 													  bool onlyValid,
-													  bool loadAll) const
+													  bool loadAll,
+													  const std::set<int> &excludedIds) const
 	{
 		if (_ppDb)
 		{
 			UTimer timer;
 			timer.start();
-			this->loadOnlySignaturesByRegionQuery(regionId, signatures, onlyValid);
+			this->loadOnlySignaturesByRegionQuery(regionId, signatures, onlyValid, excludedIds);
 			ULOGGER_DEBUG("Time to load region signatures=%fs", timer.ticks());
 			this->loadLinksQuery(signatures);
 			for (std::list<Signature *>::const_iterator iter = signatures.begin(); iter != signatures.end(); ++iter)
@@ -6758,8 +6770,8 @@ namespace rtabmap
 				this->loadWordsForSignaturesQuery(signatures);
 				ULOGGER_DEBUG("Time load words=%fs", timer.ticks());
 
-				this->loadCalibrationForSignaturesQuery(signatures);
-				ULOGGER_DEBUG("Time load %d calibrations=%fs", (int)signatures.size(), timer.ticks());
+				// this->loadCalibrationForSignaturesQuery(signatures);
+				// ULOGGER_DEBUG("Time load %d calibrations=%fs", (int)signatures.size(), timer.ticks());
 
 				this->loadGlobalDescriptorsForSignaturesQuery(signatures);
 				ULOGGER_DEBUG("Time load %d global descriptors=%fs", (int)signatures.size(), timer.ticks());
@@ -6767,7 +6779,7 @@ namespace rtabmap
 		}
 	}
 
-	void DBDriverSqlite3::loadOnlySignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid) const
+	void DBDriverSqlite3::loadOnlySignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid, const std::set<int> &excludedIds) const
 	{
 		if (_ppDb)
 		{
@@ -6803,10 +6815,20 @@ namespace rtabmap
 				query << "SELECT id, region_id, map_id, weight, pose ";
 			}
 			query << "FROM Node "
-				  << "WHERE region_id=? ";
+				  << "WHERE region_id=?";
 			if (onlyValid)
 			{
-				query << "AND weight=0";
+				query << " AND weight=0";
+			}
+			if(excludedIds.size() > 0){
+				query << " AND id NOT IN (";
+				std::copy(excludedIds.begin(), excludedIds.end(), std::ostream_iterator<int>(query, ","));
+
+				// Remove the trailing comma
+				query.seekp(-1, std::ios_base::end);
+
+				// Finish the query with ")"
+				query << ")";
 			}
 			query << ";";
 
@@ -7008,17 +7030,41 @@ namespace rtabmap
 		if (_ppDb)
 		{
 			ULOGGER_DEBUG("DBDriverSqlite3::updateRegionsQuery");
-
+			UTimer timer;
+			timer.start();
 			std::string type;
 			int rc = SQLITE_OK;
 			sqlite3_stmt *ppStmt = 0;
 			std::stringstream query;
 			unsigned int loaded = 0;
 
-			query << "UPDATE Node SET region_id=? WHERE id>=? AND id<(SELECT MIN(id) FROM Node WHERE id>? AND weight=0);";
+			// query << "SELECT MAX(id) from Node;";
+
+			// query << "UPDATE Node SET region_id=? WHERE id>=? AND id<(SELECT MIN(id) FROM Node WHERE id>? AND weight=0);";
+			query << "UPDATE Node SET region_id=? WHERE id>=? AND id<COALESCE(";
+			query << "(SELECT MIN(id) FROM Node WHERE id>? AND weight=0),";
+			query << "(SELECT MAX(id) + 1 FROM Node));";
+			// // query << "UPDATE Node SET region_id=? WHERE id=?;";
 
 			rc = sqlite3_prepare_v2(_ppDb, query.str().c_str(), -1, &ppStmt, 0);
 			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			// // Process the result if one
+			// rc = sqlite3_step(ppStmt);
+
+			// if (rc == SQLITE_ROW)
+			// {
+			// 	int maxId = sqlite3_column_int(ppStmt, 0); // Signature Id
+			// 	ULOGGER_DEBUG("DBDriverSqlite3::updateRegionsQuery retrieved id=%d", maxId);
+			// 	rc = sqlite3_step(ppStmt);
+			// }
+
+			// UASSERT_MSG(rc == SQLITE_DONE, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			// rc = sqlite3_finalize(ppStmt);
+			// UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			// ULOGGER_DEBUG("Time update regions of size %d=%fs", (int)signaturesMoved.size(), timer.ticks());
 
 			for(const auto &id_region : signaturesMoved)
 			{
@@ -7042,6 +7088,8 @@ namespace rtabmap
 
 			rc = sqlite3_finalize(ppStmt);
 			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			ULOGGER_DEBUG("Time update regions of size %d=%fs", (int)signaturesMoved.size(), timer.ticks());
 		}
 	}
 

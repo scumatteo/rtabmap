@@ -136,7 +136,8 @@ namespace rtabmap
 													  _meshShapeFactor(Parameters::defaultRegionMeshShapeFactor()),
 													  _clusteringThreshold(0),
 													  _defaultScattering(0),
-													  _scattering1Const(0)
+													  _scattering1Const(0),
+													  _experienceSize(Parameters::defaultContinualExperienceSize())
 	{
 		_feature2D = Feature2D::create(parameters);
 		_vwd = new VWDictionary(parameters);
@@ -173,6 +174,8 @@ namespace rtabmap
 		Parameters::parse(parameters, Parameters::kRegionDesiredAverageCardinality(), _desiredAverageCardinality);
 		Parameters::parse(parameters, Parameters::kRegionMeshShapeFactor(), _meshShapeFactor);
 		_scattering1Const = _desiredAverageCardinality * sqrt(_desiredAverageCardinality);
+
+		Parameters::parse(parameters, Parameters::kContinualExperienceSize(), _experienceSize);
 	}
 
 	bool Memory::init(const std::string &dbUrl, bool dbOverwritten, const ParametersMap &parameters, bool postInitClosingEvents)
@@ -2459,12 +2462,11 @@ namespace rtabmap
 			// 	keepLinkedToGraph = false;
 			// }
 
-			
-			UASSERT_MSG(this->isInSTM(s->id()),
-						uFormat("Deleting location (%d) outside the "
-								"STM is not implemented!",
-								s->id())
-							.c_str());
+			// UASSERT_MSG(this->isInSTM(s->id()),
+			// 			uFormat("Deleting location (%d) outside the "
+			// 					"STM is not implemented!",
+			// 					s->id())
+			// 				.c_str());
 			const std::multimap<int, Link> &links = s->getLinks();
 			for (std::multimap<int, Link>::const_iterator iter = links.begin(); iter != links.end(); ++iter)
 			{
@@ -2472,18 +2474,21 @@ namespace rtabmap
 				{
 					Signature *sTo = this->_getSignature(iter->first);
 					// neighbor to s
-					UASSERT_MSG(sTo != 0,
-								uFormat("A neighbor (%d) of the deleted location %d is "
-										"not found in WM/STM! Are you deleting a location "
-										"outside the STM?",
-										iter->first, s->id())
-									.c_str());
-
+					// UASSERT_MSG(sTo != 0,
+					// 			uFormat("A neighbor (%d) of the deleted location %d is "
+					// 					"not found in WM/STM! Are you deleting a location "
+					// 					"outside the STM?",
+					// 					iter->first, s->id())
+					// 				.c_str());
+					if (!sTo)
+					{
+						continue;
+					}
 					if (iter->first > s->id() && links.size() > 1 && sTo->hasLink(s->id()))
 					{
 						UWARN("Link %d of %d is newer, removing neighbor link "
-								"may split the map!",
-								iter->first, s->id());
+							  "may split the map!",
+							  iter->first, s->id());
 					}
 
 					// child
@@ -2501,7 +2506,7 @@ namespace rtabmap
 				// s->removeLinks(true); // remove all links, but keep self referring link
 				// s->removeLandmarks(); // remove all landmarks
 				s->setWeight(-9); // invalid
-				// s->setLabel("");	  // reset label
+								  // s->setLabel("");	  // reset label
 			}
 			// else
 			// {
@@ -2513,7 +2518,7 @@ namespace rtabmap
 			s->removeLinks(true); // remove all links, but keep self referring link
 			s->removeLandmarks(); // remove all landmarks
 			// s->setWeight(-9); // invalid
-			s->setLabel("");	  // reset label
+			s->setLabel(""); // reset label
 
 			this->disableWordsRef(s->id());
 			if (_vwd->isIncremental())
@@ -6688,7 +6693,11 @@ namespace rtabmap
 				ULOGGER_DEBUG("Clustering first valid node, id=%d", this->_lastSignature->id());
 				int initialRegionId = this->loadInitialRegionId(); // load initial region id (last region id + 1)
 				this->_currentRegionId = initialRegionId;
-				this->_lastSignature->setRegionId(initialRegionId); // set signature region
+				this->_regionCounter = initialRegionId;
+				if (this->_currentRegionId == 0) // first session
+				{
+					this->_lastSignature->setRegionId(this->_currentRegionId); // set signature region
+				}
 			}
 			else
 			{
@@ -6698,7 +6707,7 @@ namespace rtabmap
 				this->cacheSignatureForClustering(this->_lastSignature);
 
 				float newGaps = 0;
-				size_t newConnections = 0;
+				int newConnections = 0;
 				pcl::PointXYZ signaturePos = this->_lastSignature->getPose().position();
 
 				for (const auto &l : this->_lastSignature->getLinks()) // always in WM because connected to the current signature
@@ -6709,7 +6718,7 @@ namespace rtabmap
 					}
 
 					Signature *s = this->_signatures[l.first];
-					
+
 					ULOGGER_DEBUG("Link to id=%d", l.first);
 					ULOGGER_DEBUG("Weight=%d", s->getWeight());
 					pcl::PointXYZ linkedPos = s->getPose().position();
@@ -6724,7 +6733,7 @@ namespace rtabmap
 				}
 
 				ULOGGER_DEBUG("New gaps=%f", newGaps);
-				
+
 				this->_totalMesh = (this->_totalMesh * this->_totalConnections + newGaps) / (this->_totalConnections + newConnections);
 				this->_totalConnections = this->_totalConnections + newConnections;
 
@@ -6781,7 +6790,7 @@ namespace rtabmap
 						float defaultThreshold = this->_clusteringThreshold + this->_defaultScattering;
 						float distance = (pow(updatedRegion->centroid().x - signaturePos.x, 2) +
 										  pow(updatedRegion->centroid().y - signaturePos.y, 2) +
-							  			  pow(updatedRegion->centroid().z - signaturePos.z, 2));
+										  pow(updatedRegion->centroid().z - signaturePos.z, 2));
 						float radius2 = pow(this->_radiusUpperBound, 2);
 
 						// ULOGGER_DEBUG("Delta scattering=%f", deltaScattering);
@@ -6791,12 +6800,12 @@ namespace rtabmap
 						// ULOGGER_DEBUG("Scattering=%f", updatedRegion->scattering2());
 						// ULOGGER_DEBUG("Min scattering=%f", minScattering);
 
-						ULOGGER_DEBUG("Clustering condition: (%f < %f) && (%f < %f) && (%f < %f)", deltaScattering, 
-																								   defaultThreshold, 
-																								   distance, 
-																								   radius2, 
-																								   updatedRegion->scattering2(), 
-																								   minScattering);
+						ULOGGER_DEBUG("Clustering condition: (%f < %f) && (%f < %f) && (%f < %f)", deltaScattering,
+									  defaultThreshold,
+									  distance,
+									  radius2,
+									  updatedRegion->scattering2(),
+									  minScattering);
 
 						// std::cout << "SCATTERING +: " << updatedRegion->scattering2() - region->scattering2() << "\n";
 						// std::cout << "SECOND: " << this->_memory->clusteringThreshold() + this->_memory->defaultScattering() << "\n";
@@ -6824,14 +6833,16 @@ namespace rtabmap
 				if (candidate) // if a candidate is found
 				{
 					ULOGGER_DEBUG("Candidate id=%d", candidate->id());
-					this->_lastSignature->setRegionId(candidate->id());
+					this->_currentRegionId = candidate->id();
+					this->_lastSignature->setRegionId(this->_currentRegionId);
 					delete candidate;
 				}
 				else // new region
 				{
-					this->_currentRegionId++;
-					ULOGGER_DEBUG("No candidate found. New region id=%d", this->_currentRegionId);
-					this->_lastSignature->setRegionId(this->_currentRegionId);
+					this->_regionCounter++;
+					this->_currentRegionId = this->_regionCounter;
+					ULOGGER_DEBUG("No candidate found. New region id=%d", this->_regionCounter);
+					this->_lastSignature->setRegionId(this->_regionCounter);
 				}
 
 				std::unordered_map<int, int> signaturesMoved; // id, regionId
@@ -6846,6 +6857,17 @@ namespace rtabmap
 					this->moveFromRegion(s, signaturesMoved);
 				}
 
+				for (const auto &id_region : signaturesMoved)
+				{
+					// this->addIdInExperience(id_region.first);
+					this->updateInExperience(id_region.first, id_region.second);
+				}
+
+				if (signaturesMoved.count(this->_lastSignature->id()))
+				{
+					this->_currentRegionId = this->_lastSignature->regionId();
+				}
+
 				if (_dbDriver)
 				{
 					this->_dbDriver->updateRegions(signaturesMoved);
@@ -6858,15 +6880,104 @@ namespace rtabmap
 				this->clearCachedSignaturesForClustering();
 			}
 		}
-		else if(this->_lastSignature->getWeight() == -1)
+		else if (this->_lastSignature->getWeight() == -1)
 		{
 			this->_lastSignature->setRegionId(this->_currentRegionId);
 		}
-		else {
+		else
+		{
 			UFATAL("Memory::assignRegion: never suppose to be here");
 		}
 
 		ULOGGER_DEBUG("Time for clustering=%fs", timer.ticks());
+	}
+
+	void Memory::updateInExperience(int id, int region_id)
+	{
+		if (this->_currentExperience.count(id))
+		{
+			this->_currentExperience[id] = region_id;
+		}
+		else
+		{
+			this->_currentExperience.insert({id, region_id});
+		}
+	}
+
+	std::set<int> Memory::reactivateSignaturesByRegions(const std::list<int> &regionsIds, double &timeDbAccess, const std::set<int> &excludedIds)
+	{
+		UDEBUG("");
+		UTimer timer;
+
+		std::list<Signature *> reactivatedSigns;
+		if (_dbDriver)
+		{
+			for (std::list<int>::const_iterator iter = regionsIds.begin(); iter != regionsIds.end(); ++iter)
+			{
+				_dbDriver->loadSignaturesByRegion((*iter), reactivatedSigns, true, true, excludedIds);
+			}
+		}
+		timeDbAccess = timer.getElapsedTime();
+
+		std::list<int> idsLoaded;
+		for (std::list<Signature *>::iterator i = reactivatedSigns.begin(); i != reactivatedSigns.end(); ++i)
+		{
+			if (!(*i)->getLandmarks().empty())
+			{
+				// Update landmark indexes
+				for (std::map<int, Link>::const_iterator iter = (*i)->getLandmarks().begin(); iter != (*i)->getLandmarks().end(); ++iter)
+				{
+					int landmarkId = iter->first;
+					UASSERT(landmarkId < 0);
+
+					cv::Mat landmarkSize = iter->second.uncompressUserDataConst();
+					if (!landmarkSize.empty() && landmarkSize.type() == CV_32FC1 && landmarkSize.total() == 1)
+					{
+						std::pair<std::map<int, float>::iterator, bool> inserted = _landmarksSize.insert(std::make_pair(-landmarkId, landmarkSize.at<float>(0, 0)));
+						if (!inserted.second)
+						{
+							if (inserted.first->second != landmarkSize.at<float>(0, 0))
+							{
+								UWARN("Trying to update landmark size buffer for landmark %d with size=%f but "
+									  "it has already a different size set. Keeping old size (%f).",
+									  -landmarkId, inserted.first->second, landmarkSize.at<float>(0, 0));
+							}
+						}
+					}
+
+					std::map<int, std::set<int>>::iterator nter = _landmarksIndex.find(landmarkId);
+					if (nter != _landmarksIndex.end())
+					{
+						nter->second.insert((*i)->id());
+					}
+					else
+					{
+						std::set<int> tmp;
+						tmp.insert((*i)->id());
+						_landmarksIndex.insert(std::make_pair(landmarkId, tmp));
+					}
+				}
+			}
+
+			idsLoaded.push_back((*i)->id());
+			// append to working memory
+			this->addSignatureToWmFromLTM(*i);
+		}
+		this->enableWordsRef(idsLoaded);
+		UDEBUG("Time to reactivate signatures by region = %fs", timer.ticks());
+		return std::set<int>(idsLoaded.begin(), idsLoaded.end());
+	}
+
+	void Memory::getIdsInRAM(std::set<int> &ids) const
+	{
+		for (const auto &id : this->_stMem)
+		{
+			ids.insert(id);
+		}
+		for (const auto &id_w : this->_workingMem)
+		{
+			ids.insert(id_w.first);
+		}
 	}
 
 	// TODO

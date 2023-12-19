@@ -13,6 +13,7 @@ SET(SRC_FILES
     
     Recovery.cpp
     
+	base64.cpp
     Camera.cpp
     CameraThread.cpp
     CameraModel.cpp

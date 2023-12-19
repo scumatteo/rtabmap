@@ -94,6 +94,7 @@ public:
 
 	std::list<int> forget(const std::set<int> & ignoredIds = std::set<int>());
 	std::set<int> reactivateSignatures(const std::list<int> & ids, unsigned int maxLoaded, double & timeDbAccess);
+	std::set<int> reactivateSignaturesByRegions(const std::list<int> &regionsIds, double &timeDbAccess, const std::set<int> &excludedIds);
 
 	int cleanup();
 	void saveStatistics(const Statistics & statistics, bool saveWMState);
@@ -266,7 +267,7 @@ public:
 	inline void setCurrentRegionId(int regionId) { this->_currentRegionId = regionId; }
 	int loadInitialRegionId();
 
-	inline size_t totalConnections() { return this->_totalConnections; }
+	inline int totalConnections() { return this->_totalConnections; }
 	inline float totalMesh() { return this->_totalMesh; }
 	inline float radiusUpperBound() { return this->_radiusUpperBound; }
 	inline float defaultScattering() { return this->_defaultScattering; }
@@ -277,6 +278,14 @@ public:
 
 	void setRegionToSignature(int id, int regionId);
 	void assignRegion();
+
+	inline int experienceSize() const { return this->_experienceSize; }
+	inline void setExperienceSize(int size) { this->_experienceSize = size; }
+	inline const std::unordered_map<int, int> &currentExperience() const { return this->_currentExperience; }
+	// void addIdInExperience(int id) { this->_currentExperience.emplace_back(id); }
+	void updateInExperience(int id, int region_id);
+	inline void resetCurrentExperience() { this->_currentExperience.clear(); }
+	void getIdsInRAM(std::set<int> &ids) const;
 
 private:
 	void preUpdate();
@@ -324,6 +333,7 @@ private:
 	void traverseRegion(Signature *currentSignature, std::set<int> &visitedIds);
 	bool isRemovableFromRegion(Signature *signature);
 	void moveFromRegion(Signature *signature, std::unordered_map<int, int> &signaturesMoved);
+	
 
 protected:
 	DBDriver * _dbDriver;
@@ -415,7 +425,8 @@ private:
 	std::unordered_map<int, Signature *> _clusteringSignatures;
 	Signature * _lastValidSignature;
 	int _currentRegionId;
-	size_t _totalConnections;
+	int _regionCounter;
+	int _totalConnections;
 	float _totalMesh;
 	float _radiusUpperBound;
 	float _defaultScattering;
@@ -423,6 +434,8 @@ private:
 	float _clusteringThreshold;
 	int _desiredAverageCardinality;
 	float _scattering1Const;
+	int _experienceSize;
+	std::unordered_map<int, int> _currentExperience;
 };
 
 } // namespace rtabmap

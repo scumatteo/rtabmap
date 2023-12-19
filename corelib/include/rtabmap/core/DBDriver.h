@@ -185,7 +185,7 @@ public:
 
 	//regions
 	int countRegions() const;
-	void loadSignaturesByRegion(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const;
+	void loadSignaturesByRegion(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true, const std::set<int> &excludedIds = std::set<int>()) const;
 	void loadSignaturesForRegionById(int signatureId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const;
 	void updateRegions(std::unordered_map<int, int> &signaturesMoved) const;
 
@@ -292,7 +292,7 @@ protected:
 
 	//regions
 	virtual int countRegionsQuery() const = 0;
-	virtual void loadSignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const = 0;
+	virtual void loadSignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true, const std::set<int> &excludedIds = std::set<int>()) const = 0;
 	virtual void loadSignaturesForRegionByIdQuery(int signatureId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const = 0;
 	virtual void updateRegionsQuery(std::unordered_map<int, int> &signaturesMoved) const = 0;
 

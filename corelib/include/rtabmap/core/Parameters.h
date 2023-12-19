@@ -874,6 +874,9 @@ class RTABMAP_CORE_EXPORT Parameters
     RTABMAP_PARAM(Region, DesiredAverageCardinality,        int,    600,    "Desired average cardinality for a region (cluster).");
     RTABMAP_PARAM(Region, MeshShapeFactor,                  float,  1.0,    "Mesh shape factor for clustering.");
     RTABMAP_PARAM(Region, RadiusUpperBound,                 float,  100.0,  "Radius upper bound for a region (cluster).");
+    RTABMAP_PARAM(Region, TopK,                             int,    3,      "Top-k regions to retrieve.");
+
+    RTABMAP_PARAM(Continual, ExperienceSize,                int,  600,  "Size of each experience of the continual learning process.");
 
 public:
     virtual ~Parameters();

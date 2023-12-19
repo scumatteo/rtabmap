@@ -1418,12 +1418,12 @@ namespace rtabmap
 		return nRegions;
 	}
 
-	void DBDriver::loadSignaturesByRegion(int regionId, std::list<Signature *> &signatures, bool onlyValid, bool loadAll) const
+	void DBDriver::loadSignaturesByRegion(int regionId, std::list<Signature *> &signatures, bool onlyValid, bool loadAll, const std::set<int> &excludedIds) const
 	{
 		if (regionId >= 0)
 		{
 			_dbSafeAccessMutex.lock();
-			this->loadSignaturesByRegionQuery(regionId, signatures, onlyValid, loadAll);
+			this->loadSignaturesByRegionQuery(regionId, signatures, onlyValid, loadAll, excludedIds);
 			_dbSafeAccessMutex.unlock();
 		}
 	}
@@ -1440,9 +1440,11 @@ namespace rtabmap
 
 	void DBDriver::updateRegions(std::unordered_map<int, int> &signaturesMoved) const
 	{
-		_dbSafeAccessMutex.lock();
-		this->updateRegionsQuery(signaturesMoved);
-		_dbSafeAccessMutex.unlock();
+		if(signaturesMoved.size() > 0){
+			_dbSafeAccessMutex.lock();
+			this->updateRegionsQuery(signaturesMoved);
+			_dbSafeAccessMutex.unlock();
+		}
 	}
 
 } // namespace rtabmap
