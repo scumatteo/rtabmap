@@ -2508,6 +2508,10 @@ namespace rtabmap
 				reactivatedIds.insert(reactivatedIds.begin(), retrievalLocalIds.begin(), retrievalLocalIds.end());
 			}
 
+		
+			ULOGGER_DEBUG("WM size before reactivation: %d",  _memory->getStMem());
+		
+
 			//============================================================
 			// RETRIEVAL 3/3 : Load signatures from the database
 			//============================================================
@@ -2600,6 +2604,9 @@ namespace rtabmap
 			timeReactivations = timer.ticks();
 			ULOGGER_INFO("timeReactivations=%fs", timeReactivations);
 		}
+
+		ULOGGER_DEBUG("WM size after reactivation: %d",  _memory->getStMem());
+
 
 		//============================================================
 		// Proximity detections
@@ -4340,6 +4347,8 @@ namespace rtabmap
 			}
 		}
 
+		ULOGGER_DEBUG("WM size before transferring: %d",  _memory->getStMem());
+
 		// Pass this point signature should not be used, since it could have been transferred...
 		signature = 0;
 
@@ -4378,6 +4387,8 @@ namespace rtabmap
 		{
 			_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
 		}
+
+		ULOGGER_DEBUG("WM size after transferring: %d",  _memory->getStMem());
 
 		_lastProcessTime = totalTime;
 
