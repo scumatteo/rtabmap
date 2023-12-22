@@ -2052,7 +2052,7 @@ namespace rtabmap
 		return weights;
 	}
 
-	std::list<int> Memory::forget(const std::set<int> &ignoredIds)
+	std::list<int> Memory::forget(const std::set<int> &ignoredIds, const std::set<int> &topKRegions)
 	{
 		UDEBUG("");
 		std::list<int> signaturesRemoved;
@@ -2075,7 +2075,7 @@ namespace rtabmap
 			// dictionary to respect the limit.
 			while (wordsRemoved < newWords)
 			{
-				std::list<Signature *> signatures = this->getRemovableSignatures(1, ignoredIds);
+				std::list<Signature *> signatures = this->getRemovableSignatures(1, ignoredIds, topKRegions);
 				if (signatures.size())
 				{
 					Signature *s = dynamic_cast<Signature *>(signatures.front());
@@ -2102,7 +2102,7 @@ namespace rtabmap
 			UDEBUG("");
 			// Remove one more than total added during the iteration
 			int signaturesAdded = _signaturesAdded;
-			std::list<Signature *> signatures = getRemovableSignatures(signaturesAdded + 1, ignoredIds);
+			std::list<Signature *> signatures = getRemovableSignatures(signaturesAdded + 1, ignoredIds, topKRegions);
 			for (std::list<Signature *>::iterator iter = signatures.begin(); iter != signatures.end(); ++iter)
 			{
 				signaturesRemoved.push_back((*iter)->id());
@@ -2302,7 +2302,7 @@ namespace rtabmap
 		}
 		int weight, age, id;
 	};
-	std::list<Signature *> Memory::getRemovableSignatures(int count, const std::set<int> &ignoredIds)
+	std::list<Signature *> Memory::getRemovableSignatures(int count, const std::set<int> &ignoredIds, const std::set<int> &topKRegions)
 	{
 		// UDEBUG("");
 		std::list<Signature *> removableSignatures;
@@ -2393,33 +2393,38 @@ namespace rtabmap
 				 iter != weightAgeIdMap.end();
 				 ++iter)
 			{
-				if (!recentWmImmunized)
+				if (topKRegions.find(iter->second->regionId()) == topKRegions.end()) // not signature of topk regions
 				{
-					UDEBUG("weight=%d, id=%d",
-						   iter->second->getWeight(),
-						   iter->second->id());
-					removableSignatures.push_back(iter->second);
-
-					if (_lastGlobalLoopClosureId && iter->second->id() > _lastGlobalLoopClosureId)
+					if (!recentWmImmunized)
 					{
-						++recentWmCount;
-						if (currentRecentWmSize - recentWmCount < recentWmMaxSize)
+						UDEBUG("weight=%d, id=%d",
+							   iter->second->getWeight(),
+							   iter->second->id());
+						removableSignatures.push_back(iter->second);
+
+						if (_lastGlobalLoopClosureId && iter->second->id() > _lastGlobalLoopClosureId)
 						{
-							UDEBUG("switched recentWmImmunized");
-							recentWmImmunized = true;
+							++recentWmCount;
+							if (currentRecentWmSize - recentWmCount < recentWmMaxSize)
+							{
+								UDEBUG("switched recentWmImmunized");
+								recentWmImmunized = true;
+							}
 						}
 					}
-				}
-				else if (_lastGlobalLoopClosureId == 0 || iter->second->id() < _lastGlobalLoopClosureId)
-				{
-					UDEBUG("weight=%d, id=%d",
-						   iter->second->getWeight(),
-						   iter->second->id());
-					removableSignatures.push_back(iter->second);
-				}
-				if (removableSignatures.size() >= (unsigned int)count)
-				{
-					break;
+					else if (_lastGlobalLoopClosureId == 0 || iter->second->id() < _lastGlobalLoopClosureId)
+					{
+						UDEBUG("weight=%d, id=%d",
+							   iter->second->getWeight(),
+							   iter->second->id());
+						removableSignatures.push_back(iter->second);
+					}
+
+					// regions avoid this
+					//  if (removableSignatures.size() >= (unsigned int)count)
+					//  {
+					//  	break;
+					//  }
 				}
 			}
 		}
@@ -2433,7 +2438,7 @@ namespace rtabmap
 	/**
 	 * If saveToDatabase=false, deleted words are filled in deletedWords.
 	 */
-	void Memory::moveToTrash(Signature *s, bool keepLinkedToGraph, std::list<int> *deletedWords)
+	void Memory::moveToTrash(Signature *s, bool keepLinkedToGraph, std::list<int> *deletedWords, bool save)
 	{
 		UDEBUG("id=%d", s ? s->id() : 0);
 		if (s)
@@ -2457,71 +2462,68 @@ namespace rtabmap
 			}
 
 			// it is a bad signature (not saved), remove links!
-			// if (keepLinkedToGraph && (!s->isSaved() && s->isBadSignature() && _badSignaturesIgnored))
-			// {
-			// 	keepLinkedToGraph = false;
-			// }
-
-			// UASSERT_MSG(this->isInSTM(s->id()),
-			// 			uFormat("Deleting location (%d) outside the "
-			// 					"STM is not implemented!",
-			// 					s->id())
-			// 				.c_str());
-			const std::multimap<int, Link> &links = s->getLinks();
-			for (std::multimap<int, Link>::const_iterator iter = links.begin(); iter != links.end(); ++iter)
+			if (keepLinkedToGraph && (!s->isSaved() && s->isBadSignature() && _badSignaturesIgnored))
 			{
-				if (iter->second.from() != iter->second.to() && iter->first > 0)
-				{
-					Signature *sTo = this->_getSignature(iter->first);
-					// neighbor to s
-					// UASSERT_MSG(sTo != 0,
-					// 			uFormat("A neighbor (%d) of the deleted location %d is "
-					// 					"not found in WM/STM! Are you deleting a location "
-					// 					"outside the STM?",
-					// 					iter->first, s->id())
-					// 				.c_str());
-					if (!sTo)
-					{
-						continue;
-					}
-					if (iter->first > s->id() && links.size() > 1 && sTo->hasLink(s->id()))
-					{
-						UWARN("Link %d of %d is newer, removing neighbor link "
-							  "may split the map!",
-							  iter->first, s->id());
-					}
-
-					// child
-					if (iter->second.type() == Link::kGlobalClosure && s->id() > sTo->id() && s->getWeight() > 0)
-					{
-						sTo->setWeight(sTo->getWeight() + s->getWeight()); // copy weight
-					}
-
-					sTo->removeLink(s->id());
-				}
+				keepLinkedToGraph = false;
 			}
+
 			// If not saved to database
 			if (!keepLinkedToGraph)
 			{
-				// s->removeLinks(true); // remove all links, but keep self referring link
-				// s->removeLandmarks(); // remove all landmarks
-				s->setWeight(-9); // invalid
-								  // s->setLabel("");	  // reset label
+				UASSERT_MSG(this->isInSTM(s->id()),
+							uFormat("Deleting location (%d) outside the "
+									"STM is not implemented!",
+									s->id())
+								.c_str());
+				const std::multimap<int, Link> &links = s->getLinks();
+				for (std::multimap<int, Link>::const_iterator iter = links.begin(); iter != links.end(); ++iter)
+				{
+					if (iter->second.from() != iter->second.to() && iter->first > 0)
+					{
+						Signature *sTo = this->_getSignature(iter->first);
+						// neighbor to s
+						UASSERT_MSG(sTo != 0,
+									uFormat("A neighbor (%d) of the deleted location %d is "
+											"not found in WM/STM! Are you deleting a location "
+											"outside the STM?",
+											iter->first, s->id())
+										.c_str());
+
+						if (iter->first > s->id() && links.size() > 1 && sTo->hasLink(s->id()))
+						{
+							UWARN("Link %d of %d is newer, removing neighbor link "
+								  "may split the map!",
+								  iter->first, s->id());
+						}
+
+						// child
+						if (iter->second.type() == Link::kGlobalClosure && s->id() > sTo->id() && s->getWeight() > 0)
+						{
+							sTo->setWeight(sTo->getWeight() + s->getWeight()); // copy weight
+						}
+
+						sTo->removeLink(s->id());
+					}
+				}
+				s->removeLinks(true); // remove all links, but keep self referring link
+				s->removeLandmarks(); // remove all landmarks
+				if (!save)
+				{
+					s->setWeight(-9); // invalid
+				}
+
+				s->setLabel(""); // reset label
 			}
-			// else
-			// {
-			// 	// Make sure that virtual links are removed.
-			// 	// It should be called before the signature is
-			// 	// removed from _signatures below.
-			// 	removeVirtualLinks(s->id());
-			// }
-			s->removeLinks(true); // remove all links, but keep self referring link
-			s->removeLandmarks(); // remove all landmarks
-			// s->setWeight(-9); // invalid
-			s->setLabel(""); // reset label
+			else
+			{
+				// Make sure that virtual links are removed.
+				// It should be called before the signature is
+				// removed from _signatures below.
+				removeVirtualLinks(s->id());
+			}
 
 			this->disableWordsRef(s->id());
-			if (_vwd->isIncremental())
+			if (!keepLinkedToGraph && _vwd->isIncremental())
 			{
 				std::list<int> keys = uUniqueKeys(s->getWords());
 				for (std::list<int>::const_iterator i = keys.begin(); i != keys.end(); ++i)
@@ -2569,7 +2571,7 @@ namespace rtabmap
 				_lastGlobalLoopClosureId = 0;
 			}
 
-			if ((_notLinkedNodesKeptInDb || keepLinkedToGraph || s->isSaved()) &&
+			if ((_notLinkedNodesKeptInDb || keepLinkedToGraph || s->isSaved() || save) &&
 				_dbDriver &&
 				s->id() > 0 &&
 				(_incrementalMemory || s->isSaved() || _localizationDataSaved))
@@ -2752,13 +2754,13 @@ namespace rtabmap
 		return false;
 	}
 
-	void Memory::deleteLocation(int locationId, bool keepLinkedToGraph, std::list<int> *deletedWords)
+	void Memory::deleteLocation(int locationId, bool keepLinkedToGraph, std::list<int> *deletedWords, bool save)
 	{
 		UDEBUG("Deleting location %d", locationId);
 		Signature *location = _getSignature(locationId);
 		if (location)
 		{
-			this->moveToTrash(location, keepLinkedToGraph, deletedWords);
+			this->moveToTrash(location, keepLinkedToGraph, deletedWords, save);
 		}
 	}
 
@@ -6914,6 +6916,7 @@ namespace rtabmap
 		{
 			for (std::list<int>::const_iterator iter = regionsIds.begin(); iter != regionsIds.end(); ++iter)
 			{
+				ULOGGER_DEBUG("Loading region %d", (*iter));
 				_dbDriver->loadSignaturesByRegion((*iter), reactivatedSigns, true, true, excludedIds);
 			}
 		}

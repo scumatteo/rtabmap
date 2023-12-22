@@ -606,6 +606,9 @@ namespace rtabmap
 
 	void DBDriver::loadWords(const std::set<int> &wordIds, std::list<VisualWord *> &vws)
 	{
+
+		UTimer timer;
+		timer.start();
 		// look up in the trash before the database
 		std::set<int> ids = wordIds;
 		std::map<int, VisualWord *>::iterator wIter;
@@ -633,6 +636,7 @@ namespace rtabmap
 			}
 		}
 		_trashesMutex.unlock();
+		ULOGGER_DEBUG("Time to load words from trash=%fs", timer.ticks());
 		if (ids.size())
 		{
 			_dbSafeAccessMutex.lock();

@@ -3293,6 +3293,8 @@ namespace rtabmap
 			unsigned long dRealSizeTotal = 0;
 			for (std::set<int>::const_iterator iter = wordIds.begin(); iter != wordIds.end(); ++iter)
 			{
+				UTimer wordTimer;
+				wordTimer.start();
 				// bind id
 				rc = sqlite3_bind_int(ppStmt, 1, *iter);
 				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
@@ -3333,6 +3335,7 @@ namespace rtabmap
 					loaded.insert(loaded.end(), *iter);
 
 					rc = sqlite3_step(ppStmt);
+					ULOGGER_DEBUG("Time load word %d=%fs", *iter, wordTimer.ticks());
 				}
 
 				UASSERT_MSG(rc == SQLITE_DONE, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
@@ -6455,6 +6458,8 @@ namespace rtabmap
 	{
 		if (_ppDb)
 		{
+			UTimer timer;
+			timer.start();
 			if (signatures.size() && uStrNumCmp(_version, "0.10.0") >= 0)
 			{
 				int rc = SQLITE_OK;
@@ -6488,6 +6493,7 @@ namespace rtabmap
 						dataSize = sqlite3_column_bytes(ppStmt, index++);
 						// multi-cameras [fx,fy,cx,cy,[width,height],local_transform, ... ,fx,fy,cx,cy,[width,height],local_transform] (4or6+12)*float * numCameras
 						// stereo [fx, fy, cx, cy, baseline, [width,height], local_transform] (5or7+12)*float
+						ULOGGER_DEBUG("Time perfoming query=%fs", timer.ticks());
 						if (dataSize > 0 && data)
 						{
 							if (uStrNumCmp(_version, "0.18.0") >= 0)
@@ -6531,6 +6537,7 @@ namespace rtabmap
 								{
 									UFATAL("Wrong format of the Data.calibration field (size=%d bytes)", dataSize);
 								}
+								
 							}
 							else
 							{
@@ -6625,8 +6632,12 @@ namespace rtabmap
 								}
 							}
 
+							ULOGGER_DEBUG("Time recreating model=%fs", timer.ticks());
+
 							(*iter)->sensorData().setCameraModels(models);
 							(*iter)->sensorData().setStereoCameraModels(stereoModels);
+
+							ULOGGER_DEBUG("Time setting model=%fs", timer.ticks());
 						}
 						rc = sqlite3_step(ppStmt);
 					}
@@ -6647,6 +6658,8 @@ namespace rtabmap
 	{
 		if (_ppDb)
 		{
+			UTimer timer;
+			timer.start();
 			if (signatures.size() && uStrNumCmp(_version, "0.20.0") >= 0)
 			{
 				int rc = SQLITE_OK;
@@ -6668,6 +6681,7 @@ namespace rtabmap
 					std::vector<GlobalDescriptor> globalDescriptors;
 
 					rc = sqlite3_step(ppStmt);
+					ULOGGER_DEBUG("Time perfoming query=%fs", timer.ticks());
 					while (rc == SQLITE_ROW)
 					{
 						int index = 0;
@@ -6693,6 +6707,7 @@ namespace rtabmap
 
 						UASSERT(!dataMat.empty());
 						globalDescriptors.push_back(GlobalDescriptor(type, dataMat, info));
+						ULOGGER_DEBUG("Time creating descriptor=%fs", timer.ticks());
 
 						rc = sqlite3_step(ppStmt);
 					}
@@ -6770,8 +6785,8 @@ namespace rtabmap
 				this->loadWordsForSignaturesQuery(signatures);
 				ULOGGER_DEBUG("Time load words=%fs", timer.ticks());
 
-				// this->loadCalibrationForSignaturesQuery(signatures);
-				// ULOGGER_DEBUG("Time load %d calibrations=%fs", (int)signatures.size(), timer.ticks());
+				this->loadCalibrationForSignaturesQuery(signatures);
+				ULOGGER_DEBUG("Time load %d calibrations=%fs", (int)signatures.size(), timer.ticks());
 
 				this->loadGlobalDescriptorsForSignaturesQuery(signatures);
 				ULOGGER_DEBUG("Time load %d global descriptors=%fs", (int)signatures.size(), timer.ticks());
@@ -6831,6 +6846,8 @@ namespace rtabmap
 				query << ")";
 			}
 			query << ";";
+
+			ULOGGER_DEBUG("Query: %s", query.str().c_str());
 
 			rc = sqlite3_prepare_v2(_ppDb, query.str().c_str(), -1, &ppStmt, 0);
 			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());

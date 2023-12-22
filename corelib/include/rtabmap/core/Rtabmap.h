@@ -273,7 +273,7 @@ private:
 
 	void writeExperience(int id) const;
 	bool getImageString(int id, const cv::Mat &image, std::string &imageStr) const;
-	bool readJsonLock(const std::string &filename, nlohmann::json &json) const;
+	int readJsonLock(const std::string &filename, nlohmann::json &json) const;
 	bool writeJsonImage(int id, const std::string &filename, const std::string &imageStr, bool lock = true) const;
 	bool writeJsonLock(const std::string &filename, const nlohmann::json &json) const;
 	bool writeJson(const std::string &filename, const nlohmann::json &json) const;
@@ -397,6 +397,7 @@ private:
 
 	//regions
 	int _topK;
+	std::set<int> _topKRegions;
 
 #ifdef RTABMAP_PYTHON
 	PythonInterface * _python;

@@ -92,7 +92,7 @@ public:
 	int incrementMapId(std::map<int, int> * reducedIds = 0);
 	void updateAge(int signatureId);
 
-	std::list<int> forget(const std::set<int> & ignoredIds = std::set<int>());
+	std::list<int> forget(const std::set<int> & ignoredIds = std::set<int>(), const std::set<int> &topKRegions = std::set<int>());
 	std::set<int> reactivateSignatures(const std::list<int> & ids, unsigned int maxLoaded, double & timeDbAccess);
 	std::set<int> reactivateSignaturesByRegions(const std::list<int> &regionsIds, double &timeDbAccess, const std::set<int> &excludedIds);
 
@@ -142,7 +142,7 @@ public:
 			float radius,
 			const std::map<int, Transform> & optimizedPoses,
 			int maxGraphDepth) const;
-	void deleteLocation(int locationId, bool keepLinkedToGraph = false, std::list<int> * deletedWords = 0);
+	void deleteLocation(int locationId, bool keepLinkedToGraph = false, std::list<int> * deletedWords = 0, bool save = false);
 	void saveLocationData(int locationId);
 	void removeLink(int idA, int idB);
 	void removeRawData(int id, bool image = true, bool scan = true, bool userData = true);
@@ -292,13 +292,14 @@ private:
 	void addSignatureToStm(Signature * signature, const cv::Mat & covariance);
 	void clear();
 	void loadDataFromDb(bool postInitClosingEvents);
-	void moveToTrash(Signature * s, bool keepLinkedToGraph = true, std::list<int> * deletedWords = 0);
+	void moveToTrash(Signature * s, bool keepLinkedToGraph = true, std::list<int> * deletedWords = 0, bool save = false);
 
 	void moveSignatureToWMFromSTM(int id, int * reducedTo = 0);
 	void addSignatureToWmFromLTM(Signature * signature);
 	Signature * _getSignature(int id) const;
 	std::list<Signature *> getRemovableSignatures(int count,
-			const std::set<int> & ignoredIds = std::set<int>());
+			const std::set<int> & ignoredIds = std::set<int>(),
+			const std::set<int> &topKRegions = std::set<int>());
 	int getNextId();
 	void initCountId();
 	void rehearsal(Signature * signature, Statistics * stats = 0);
