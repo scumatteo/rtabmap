@@ -282,8 +282,8 @@ public:
 	inline int experienceSize() const { return this->_experienceSize; }
 	inline void setExperienceSize(int size) { this->_experienceSize = size; }
 	inline const std::unordered_map<int, int> &currentExperience() const { return this->_currentExperience; }
-	// void addIdInExperience(int id) { this->_currentExperience.emplace_back(id); }
-	void updateInExperience(int id, int region_id);
+	void addIdInExperience(int id, int regionId);
+	void updateInExperience(int id, int regionId);
 	inline void resetCurrentExperience() { this->_currentExperience.clear(); }
 	void getIdsInRAM(std::set<int> &ids) const;
 

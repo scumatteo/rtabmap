@@ -4302,7 +4302,7 @@ namespace rtabmap
 				// 	std::string filename = "/data/example.json";
 				// 	this->writeJsonImage(signature->id(), filename, imageStr, true);
 				// }
-				_memory->updateInExperience(signature->id(), signature->regionId());
+				_memory->addIdInExperience(signature->id(), signature->regionId());
 				// _memory->addIdInExperience(signature->id());
 				this->writeExperience(signature->id());
 				// _memory->setRegionToSignature(signature->id(), _memory->currentRegionId());
@@ -4320,7 +4320,7 @@ namespace rtabmap
 				// 	std::string filename = "/data/example.json";
 				// 	this->writeJsonImage(signature->id(), filename, imageStr, true);
 				// }
-				_memory->updateInExperience(signature->id(), signature->regionId());
+				_memory->addIdInExperience(signature->id(), signature->regionId());
 				// _memory->addIdInExperience(signature->id());
 				this->writeExperience(signature->id());
 				_memory->saveLocationData(signature->id());

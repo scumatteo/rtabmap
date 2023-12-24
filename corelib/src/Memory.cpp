@@ -2393,7 +2393,7 @@ namespace rtabmap
 				 iter != weightAgeIdMap.end();
 				 ++iter)
 			{
-				if (topKRegions.find(iter->second->regionId()) == topKRegions.end()) // not signature of topk regions
+				if (topKRegions.find(iter->second->regionId()) == topKRegions.end() && iter->second->regionId() != this->_currentRegionId) // not signature of topk regions and not of current region
 				{
 					if (!recentWmImmunized)
 					{
@@ -6894,15 +6894,27 @@ namespace rtabmap
 		ULOGGER_DEBUG("Time for clustering=%fs", timer.ticks());
 	}
 
-	void Memory::updateInExperience(int id, int region_id)
+	void Memory::addIdInExperience(int id, int regionId) 
 	{
 		if (this->_currentExperience.count(id))
 		{
-			this->_currentExperience[id] = region_id;
+			ULOGGER_DEBUG("Trying to add in experience id %d already present. Use updateInExperience instead.", id);
 		}
 		else
 		{
-			this->_currentExperience.insert({id, region_id});
+			this->_currentExperience.insert({id, regionId});
+		}
+	}
+
+	void Memory::updateInExperience(int id, int regionId)
+	{
+		if (this->_currentExperience.count(id))
+		{
+			this->_currentExperience[id] = regionId;
+		}
+		else
+		{
+			ULOGGER_DEBUG("Trying to add in experience id %d not present. Use addIdInExperience instead.", id);
 		}
 	}
 
