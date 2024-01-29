@@ -271,14 +271,6 @@ private:
 	void setupLogFiles(bool overwrite = false);
 	void flushStatisticLogs();
 
-	void writeExperience(int id) const;
-	bool getImageString(int id, const cv::Mat &image, std::string &imageStr) const;
-	int readJsonLock(const std::string &filename, nlohmann::json &json) const;
-	bool writeJsonImage(int id, const std::string &filename, const std::string &imageStr, bool lock = true) const;
-	bool writeJsonLock(const std::string &filename, const nlohmann::json &json) const;
-	bool writeJson(const std::string &filename, const nlohmann::json &json) const;
-	void sortRegionsProbabilities(const std::vector<float> &predictions, std::vector<std::pair<float, int>> &indices) const;
-
 private:
 	// Modifiable parameters
 	bool _publishStats;
@@ -394,10 +386,7 @@ private:
 	Transform _pathTransformToGoal;
 	int _pathStuckCount;
 	float _pathStuckDistance;
-
-	//regions
-	int _topK;
-	std::set<int> _topKRegions;
+	
 
 #ifdef RTABMAP_PYTHON
 	PythonInterface * _python;

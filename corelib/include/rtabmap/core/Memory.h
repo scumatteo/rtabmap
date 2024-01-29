@@ -45,6 +45,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <opencv2/features2d/features2d.hpp>
 #include <pcl/pcl_config.h>
 
+#include <nlohmann/json.hpp>
+
 namespace rtabmap {
 
 class Signature;
@@ -284,8 +286,20 @@ public:
 	inline const std::unordered_map<int, int> &currentExperience() const { return this->_currentExperience; }
 	void addIdInExperience(int id, int regionId);
 	void updateInExperience(int id, int regionId);
-	inline void resetCurrentExperience() { this->_currentExperience.clear(); }
 	void getIdsInRAM(std::set<int> &ids) const;
+
+	void writeExperience(int id);
+	bool getImageString(int id, const cv::Mat &image, std::string &imageStr) const;
+	int readJsonLock(const std::string &filename, nlohmann::json &json) const;
+	bool writeJsonImage(int id, const std::string &filename, const std::string &imageStr, bool lock = true) const;
+	bool writeJsonLock(const std::string &filename, const nlohmann::json &json) const;
+	bool writeJson(const std::string &filename, const nlohmann::json &json) const;
+	void sortRegionsProbabilities(const std::vector<float> &predictions, std::vector<std::pair<float, int>> &indices) const;
+	inline int topK() const { return this->_topK; }
+	inline const std::set<int> &topKRegions() const { return this->_topKRegions; } 
+	inline void insertInTopKRegions(int id) { this->_topKRegions.insert(id); }
+	inline void clearTopKRegions() { this->_topKRegions.clear(); }
+	void reactivateTopKRegions(double & timeDbAccess);
 
 private:
 	void preUpdate();
@@ -437,6 +451,9 @@ private:
 	float _scattering1Const;
 	int _experienceSize;
 	std::unordered_map<int, int> _currentExperience;
+
+	int _topK;
+	std::set<int> _topKRegions;
 };
 
 } // namespace rtabmap

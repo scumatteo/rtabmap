@@ -1620,7 +1620,7 @@ Transform RegistrationVis::computeTransformationImpl(
 						{
 							// Multi-Camera
 							UASSERT(models[0].isValidForProjection());
-
+							
 							transforms[dir] = util3d::estimateMotion3DTo2D(
 									words3A,
 									wordsB,

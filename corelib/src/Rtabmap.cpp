@@ -179,8 +179,7 @@ namespace rtabmap
 						 _pathGoalIndex(0),
 						 _pathTransformToGoal(Transform::getIdentity()),
 						 _pathStuckCount(0),
-						 _pathStuckDistance(0.0f),
-						 _topK(Parameters::defaultRegionTopK())
+						 _pathStuckDistance(0.0f)
 #ifdef RTABMAP_PYTHON
 						 ,
 						 _python(new PythonInterface())
@@ -509,6 +508,10 @@ namespace rtabmap
 			delete _epipolarGeometry;
 			_epipolarGeometry = 0;
 		}
+		if(_memory->currentExperience().size() > 0)
+		{
+			_memory->writeExperience(_memory->getLastSignatureId());
+		}
 		if (_memory)
 		{
 			if (databaseSaved)
@@ -546,7 +549,6 @@ namespace rtabmap
 		parseParameters(Parameters::getDefaultParameters()); // reset to default parameters
 		_parameters.clear();
 
-		std::remove("/data/predictions.json");
 		std::remove("/data/experience.json");
 		std::remove("/data/inference.json");
 	}
@@ -676,9 +678,6 @@ namespace rtabmap
 				}
 			}
 		}
-
-		// regions
-		Parameters::parse(parameters, Parameters::kRegionTopK(), _topK);
 
 		UASSERT(_rgbdLinearUpdate >= 0.0f);
 		UASSERT(_rgbdAngularUpdate >= 0.0f);
@@ -1174,6 +1173,7 @@ namespace rtabmap
 		covariance.at<double>(5, 5) = odomAngularVariance;
 		return process(data, odomPose, covariance, odomVelocity, externalStats);
 	}
+
 	bool Rtabmap::process(
 		const SensorData &data,
 		Transform odomPose,
@@ -2342,11 +2342,13 @@ namespace rtabmap
 				inferenceTimer.start();
 				// if valid node do inference
 				std::string imageStr;
+				ULOGGER_DEBUG("Before imageRaw");
 				cv::Mat currentImage = signature->sensorData().imageRaw();
-				if (this->getImageString(signature->id(), currentImage, imageStr))
+				ULOGGER_DEBUG("After imageRaw");
+				if (_memory->getImageString(signature->id(), currentImage, imageStr))
 				{
 					std::string filename = "/data/inference.json";
-					this->writeJsonImage(signature->id(), filename, imageStr);
+					_memory->writeJsonImage(signature->id(), filename, imageStr);
 				}
 				ULOGGER_DEBUG("Time for writing inference=%fs", inferenceTimer.ticks());
 			}
@@ -2508,9 +2510,7 @@ namespace rtabmap
 				reactivatedIds.insert(reactivatedIds.begin(), retrievalLocalIds.begin(), retrievalLocalIds.end());
 			}
 
-		
-			ULOGGER_DEBUG("WM size before reactivation: %d",  _memory->getStMem());
-		
+			ULOGGER_DEBUG("WM size before reactivation: %d", _memory->getWorkingMem().size());
 
 			//============================================================
 			// RETRIEVAL 3/3 : Load signatures from the database
@@ -2546,67 +2546,14 @@ namespace rtabmap
 			if (!signature->isBadSignature() && (signature->getWeight() >= 0) && !smallDisplacement && !tooFastMovement)
 			// if(signature->getWeight() >= 0)
 			{
-				std::string predictionsFilename = "/data/predictions.json";
-				nlohmann::json json;
-				std::vector<float> predictions;
-
-				UTimer timer;
-				timer.start();
-				int status;
-
-				while (timer.getElapsedTime() < 0.1)
-				{
-					status = this->readJsonLock(predictionsFilename, json);
-					if (status == -1 || status == 0)
-					{
-						break;
-					}
-				}
-				ULOGGER_DEBUG("Time for read predictions=%fs", timer.ticks());
-				if (status == 0)
-				{
-					ULOGGER_DEBUG("Prediction on node=%d, current node=%d", json["id"].get<int>(), signature->id());
-					predictions = json["predictions"].get<std::vector<float>>();
-					std::vector<std::pair<float, int>> indices;
-					this->sortRegionsProbabilities(predictions, indices);
-					std::list<int> regionsToRetrieve;
-					std::set<int> excludedIds;
-					_memory->getIdsInRAM(excludedIds);
-					this->_topKRegions.clear();
-
-					ULOGGER_DEBUG("Signatures already in RAM: %d", excludedIds.size());
-					for (int i = 0; i < indices.size(); i++)
-					{
-						if (i >= this->_topK)
-						{
-							break;
-						}
-						ULOGGER_DEBUG("Top %d region predicted: %d with probability %f", i + 1, indices[i].second, indices[i].first);
-						regionsToRetrieve.emplace_back(indices[i].second);
-						this->_topKRegions.insert(indices[i].second);
-					}
-					// for (int i = 0; i < this->_topK; i++)
-					// {
-					// 	if (i < indices.size())
-					// 	{
-					// 		ULOGGER_DEBUG("Top %d region predicted: %d with probability %f", i + 1, indices[i].second, indices[i].first);
-					// 		regionsToRetrieve.emplace_back(indices[i].second);
-					// 		this->_topKRegions.insert
-					// 	}
-					// }
-					ULOGGER_DEBUG("Time parse and sort predictions=%fs", timer.ticks());
-					std::set<int> reactivatedRegionsIds = _memory->reactivateSignaturesByRegions(regionsToRetrieve, timeRetrievalDbAccess, excludedIds);
-					ULOGGER_DEBUG("Time for reactivate signatures by region=%fs", timer.ticks());
-					ULOGGER_DEBUG("Reactivated signatures by region: %d", reactivatedRegionsIds.size());
-				}
+				_memory->reactivateTopKRegions(timeRetrievalDbAccess);
 			}
 
 			timeReactivations = timer.ticks();
 			ULOGGER_INFO("timeReactivations=%fs", timeReactivations);
 		}
 
-		ULOGGER_DEBUG("WM size after reactivation: %d",  _memory->getStMem());
-
+		ULOGGER_DEBUG("WM size after reactivation: %d", _memory->getWorkingMem().size());
 
 		//============================================================
 		// Proximity detections
@@ -4304,7 +4251,10 @@ namespace rtabmap
 				// }
 				_memory->addIdInExperience(signature->id(), signature->regionId());
 				// _memory->addIdInExperience(signature->id());
-				this->writeExperience(signature->id());
+				if (_memory->currentExperience().size() >= _memory->experienceSize())
+				{
+					_memory->writeExperience(signature->id());
+				}
 				// _memory->setRegionToSignature(signature->id(), _memory->currentRegionId());
 				_memory->deleteLocation(signature->id(), false, 0, true);
 			}
@@ -4322,7 +4272,10 @@ namespace rtabmap
 				// }
 				_memory->addIdInExperience(signature->id(), signature->regionId());
 				// _memory->addIdInExperience(signature->id());
-				this->writeExperience(signature->id());
+				if (_memory->currentExperience().size() >= _memory->experienceSize())
+				{
+					_memory->writeExperience(signature->id());
+				}
 				_memory->saveLocationData(signature->id());
 			}
 		}
@@ -4347,7 +4300,7 @@ namespace rtabmap
 			}
 		}
 
-		ULOGGER_DEBUG("WM size before transferring: %d",  _memory->getStMem());
+		ULOGGER_DEBUG("WM size before transferring: %d", _memory->getWorkingMem().size());
 
 		// Pass this point signature should not be used, since it could have been transferred...
 		signature = 0;
@@ -4380,7 +4333,7 @@ namespace rtabmap
 		// }
 		ULOGGER_INFO("Removing old signatures of different regions");
 		immunizedLocations.insert(_lastLocalizationNodeId); // keep the latest localization in working memory
-		std::list<int> transferred = _memory->forget(immunizedLocations, this->_topKRegions);
+		std::list<int> transferred = _memory->forget(immunizedLocations, _memory->topKRegions());
 		ULOGGER_DEBUG("Signatures transferred: %d", transferred.size());
 		signaturesRemoved.insert(signaturesRemoved.end(), transferred.begin(), transferred.end());
 		if (!_someNodesHaveBeenTransferred && transferred.size())
@@ -4388,7 +4341,7 @@ namespace rtabmap
 			_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
 		}
 
-		ULOGGER_DEBUG("WM size after transferring: %d",  _memory->getStMem());
+		ULOGGER_DEBUG("WM size after transferring: %d", _memory->getWorkingMem().size());
 
 		_lastProcessTime = totalTime;
 
@@ -7250,211 +7203,7 @@ namespace rtabmap
 		}
 	}
 
-	int Rtabmap::readJsonLock(const std::string &filename, nlohmann::json &json) const
-	{
-		int status = 0;
-		int fileDescriptor = open(filename.c_str(), O_RDONLY);
-		if (fileDescriptor == -1)
-		{
-			ULOGGER_WARN("Error opening file");
-			status = -1;
-		}
-		else
-		{
-			// Try to acquire an exclusive lock (non-blocking)
-			struct flock fl;
-			fl.l_type = F_RDLCK; // Exclusive write lock
-			fl.l_whence = SEEK_SET;
-			fl.l_start = 0;
-			fl.l_len = 0;		 // Lock the entire file
-			fl.l_pid = getpid(); // Set the process ID
-
-			if (fcntl(fileDescriptor, F_SETLK, &fl) == -1)
-			{
-				ULOGGER_WARN("Error acquiring lock");
-				status = 1;
-			}
-			else
-			{
-				std::ifstream file(filename);
-				if (!file.is_open())
-				{
-					ULOGGER_DEBUG("Error opening the file: %s", filename);
-					status = -1;
-				}
-				else
-				{
-					json = nlohmann::json::parse(file);
-					file.close();
-					status = 0;
-
-					ULOGGER_DEBUG("File readed: %s", filename.c_str());
-				}
-				// Release the lock
-				fl.l_type = F_UNLCK;
-				if (fcntl(fileDescriptor, F_SETLKW, &fl) == -1)
-				{
-					ULOGGER_WARN("Error releasing lock");
-				}
-				// Close the file
-			}
-		}
-		::close(fileDescriptor);
-		return status;
-	}
-
-	bool Rtabmap::writeJsonLock(const std::string &filename, const nlohmann::json &json) const
-	{
-		bool done = false;
-		int fileDescriptor = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-		if (fileDescriptor == -1)
-		{
-			ULOGGER_WARN("Error opening file");
-		}
-		else
-		{
-			// Try to acquire an exclusive lock (non-blocking)
-			struct flock fl;
-			fl.l_type = F_WRLCK; // Exclusive write lock
-			fl.l_whence = SEEK_SET;
-			fl.l_start = 0;
-			fl.l_len = 0;		 // Lock the entire file
-			fl.l_pid = getpid(); // Set the process ID
-
-			if (fcntl(fileDescriptor, F_SETLK, &fl) == -1)
-			{
-				ULOGGER_WARN("Error acquiring lock");
-			}
-
-			else
-			{
-				std::string jsonStr = json.dump();
-				// Successfully acquired the lock, now write to the file
-				ssize_t res = write(fileDescriptor, jsonStr.c_str(), jsonStr.size());
-
-				if (res <= 0)
-				{
-					ULOGGER_WARN("Error writing on file");
-				}
-
-				// Release the lock
-				fl.l_type = F_UNLCK;
-				if (fcntl(fileDescriptor, F_SETLK, &fl) == -1)
-				{
-					ULOGGER_WARN("Error releasing lock");
-				}
-				else if (res > 0)
-				{
-					done = true;
-				}
-				// Close the file
-			}
-		}
-		::close(fileDescriptor);
-		return done;
-	}
-
-	bool Rtabmap::writeJson(const std::string &filename, const nlohmann::json &json) const
-	{
-		UTimer timer;
-		timer.start();
-		std::string jsonStr = json.dump();
-		std::ofstream file(filename, std::ios::app);
-		if (!file.is_open())
-		{
-			ULOGGER_DEBUG("Error opening the file: %s", filename);
-			return false;
-		}
-		file << jsonStr;
-		file.close();
-		ULOGGER_DEBUG("Time to write image on file=%fs", timer.ticks());
-		return true;
-	}
-
-	bool Rtabmap::getImageString(int id, const cv::Mat &image, std::string &imageStr) const
-	{
-		ULOGGER_DEBUG("Image empty=%d", image.empty());
-		ULOGGER_DEBUG("Image type=%d", image.type());
-		if (!image.empty() && image.type() == CV_8UC3)
-		{
-			std::vector<uchar> buffer;
-			cv::imencode(".jpg", image, buffer);
-			auto *imageEncoded = reinterpret_cast<unsigned char *>(buffer.data());
-			imageStr = base64_encode(imageEncoded, buffer.size());
-
-			// imageJson["rows"] = image.rows;
-			// imageJson["cols"] = image.cols;
-			// imageJson["channels"] = image.channels();
-			// imageJson["data"] = imageEncodedStr;
-
-			// jsonData["id"] = signature->id();
-			return true;
-		}
-		return false;
-	}
-
-	bool Rtabmap::writeJsonImage(int id, const std::string &filename, const std::string &imageStr, bool lock) const
-	{
-		nlohmann::json json;
-		json["id"] = id;
-		json["image"] = imageStr;
-
-		bool stopped = false;
-
-		UTimer timer;
-		timer.start();
-		double timeElapsed = 0;
-
-		while ((lock && !this->writeJsonLock(filename, json)) || (!lock && !this->writeJson(filename, json)))
-		{
-			timeElapsed = timer.getElapsedTime();
-			if (timeElapsed > 0.1)
-			{
-				stopped = true;
-				break;
-			}
-			// std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		}
-		if (!stopped)
-		{
-			ULOGGER_DEBUG("Time to write example id=%d on file=%fs", id, timer.ticks());
-			return true;
-		}
-		ULOGGER_DEBUG("Time to write exceded. Image id=%d not written on file=%s", id, filename);
-	}
-
-	void Rtabmap::writeExperience(int id) const
-	{
-		std::unordered_map<int, int> currentExperience = _memory->currentExperience();
-		if (currentExperience.size() >= _memory->experienceSize())
-		{
-			nlohmann::json json;
-			json["id"] = id;
-			json["experience"] = currentExperience;
-
-			std::string filename = "/data/experience.json";
-
-			double timeElapsed = 0;
-			UTimer timer;
-			timer.start();
-			while (!this->writeJsonLock(filename, json) && timer.getElapsedTime() < 0.1)
-			{
-				// std::this_thread::sleep_for(std::chrono::milliseconds(1));
-			}
-			_memory->resetCurrentExperience();
-			ULOGGER_DEBUG("Time to write experience on file=%fs", timer.ticks());
-		}
-	}
-
-	void Rtabmap::sortRegionsProbabilities(const std::vector<float> &predictions, std::vector<std::pair<float, int>> &indices) const
-	{
-		for (int i = 0; i < predictions.size(); i++)
-		{
-			indices.push_back({predictions[i], i});
-		}
-
-		std::sort(indices.rbegin(), indices.rend());
-	}
+	
 	// void Rtabmap::writeExperience(int id) const
 	// {
 	// 	std::list<int> currentExperience = _memory->currentExperience();

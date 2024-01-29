@@ -318,7 +318,7 @@ Transform estimateMotion3DTo2D(
 
 	UDEBUG("words3A=%d words2B=%d matches=%d words3B=%d guess=%s reprojError=%f iterations=%d samplingPolicy=%ld",
 			(int)words3A.size(), (int)words2B.size(), (int)matches.size(), (int)words3B.size(),
-			guess.prettyPrint().c_str(), reprojError, iterations, samplingPolicy);
+			guess.prettyPrint().c_str(), reprojError, iterations, samplingPolicy);\
 
 	if((int)matches.size() >= minInliers)
 	{
@@ -473,7 +473,7 @@ Transform estimateMotion3DTo2D(
 			UDEBUG("Ransac params: threshold = %f (reprojError=%f fx=%f), max iterations=%d", ransac.threshold_, reprojError, cameraModels[0].fx(), ransac.max_iterations_);
 
 			//Run the experiment
-			ransac.computeModel();
+			ransac.computeModel(2);
 
 			pnp = Transform::fromEigen3d(ransac.model_coefficients_);
 

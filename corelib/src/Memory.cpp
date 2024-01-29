@@ -64,6 +64,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <rtabmap/core/MarkerDetector.h>
 #include <opencv2/imgproc/types_c.h>
 
+#include "rtabmap/core/base64.h"
+#include <iostream>
+#include <fcntl.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <set>
+
 namespace rtabmap
 {
 
@@ -137,6 +144,7 @@ namespace rtabmap
 													  _clusteringThreshold(0),
 													  _defaultScattering(0),
 													  _scattering1Const(0),
+						 							  _topK(Parameters::defaultRegionTopK()),
 													  _experienceSize(Parameters::defaultContinualExperienceSize())
 	{
 		_feature2D = Feature2D::create(parameters);
@@ -175,6 +183,7 @@ namespace rtabmap
 		Parameters::parse(parameters, Parameters::kRegionMeshShapeFactor(), _meshShapeFactor);
 		_scattering1Const = _desiredAverageCardinality * sqrt(_desiredAverageCardinality);
 
+		Parameters::parse(parameters, Parameters::kRegionTopK(), _topK);
 		Parameters::parse(parameters, Parameters::kContinualExperienceSize(), _experienceSize);
 	}
 
@@ -245,6 +254,7 @@ namespace rtabmap
 		}
 
 		loadDataFromDb(postInitClosingEvents);
+		std::cout << "R4\n";
 
 		if (postInitClosingEvents)
 			UEventsManager::post(new RtabmapEventInit(RtabmapEventInit::kInitialized));
@@ -831,6 +841,7 @@ namespace rtabmap
 					_memoryChanged = memoryChanged;
 					_linksChanged = linksChanged;
 					this->loadDataFromDb(false);
+					std::cout << "R5\n";
 					UWARN("Switching from Mapping to Localization mode, the database is reloaded!");
 				}
 			}
@@ -6692,6 +6703,13 @@ namespace rtabmap
 		{
 			if (this->_currentRegionId == -1) // first valid node
 			{
+				std::ifstream clusteringFile;
+				clusteringFile.open("/data/clustering.txt");
+				ULOGGER_DEBUG("Reading total mesh and total connections from file");
+				clusteringFile >> this->_totalMesh >> this->_totalConnections;
+				ULOGGER_DEBUG("Total mesh=%f - total connections=%d", this->_totalMesh, this->_totalConnections);
+				clusteringFile.close();
+
 				ULOGGER_DEBUG("Clustering first valid node, id=%d", this->_lastSignature->id());
 				int initialRegionId = this->loadInitialRegionId(); // load initial region id (last region id + 1)
 				this->_currentRegionId = initialRegionId;
@@ -6699,188 +6717,206 @@ namespace rtabmap
 				if (this->_currentRegionId == 0) // first session
 				{
 					this->_lastSignature->setRegionId(this->_currentRegionId); // set signature region
+					return;
+				}
+				bool onlyLinkedWithItself = true;
+				for(const auto &l : this->_lastSignature->getLinks())
+				{
+					if(l.second.from() != l.first) //first node only link to itself?
+					{
+						onlyLinkedWithItself = false;
+						break;
+					} 
+				}
+				if(onlyLinkedWithItself)
+				{
+					this->_lastSignature->setRegionId(this->_currentRegionId);
+					return;
 				}
 			}
-			else
+		
+			ULOGGER_DEBUG("Clustering valid node, id=%d", this->_lastSignature->id());
+			std::set<int> regionIdsConnected;
+
+			this->cacheSignatureForClustering(this->_lastSignature);
+
+			float newGaps = 0;
+			int newConnections = 0;
+			pcl::PointXYZ signaturePos = this->_lastSignature->getPose().position();
+
+			for (const auto &l : this->_lastSignature->getLinks()) // always in WM because connected to the current signature
 			{
-				ULOGGER_DEBUG("Clustering valid node, id=%d", this->_lastSignature->id());
-				std::set<int> regionIdsConnected;
-
-				this->cacheSignatureForClustering(this->_lastSignature);
-
-				float newGaps = 0;
-				int newConnections = 0;
-				pcl::PointXYZ signaturePos = this->_lastSignature->getPose().position();
-
-				for (const auto &l : this->_lastSignature->getLinks()) // always in WM because connected to the current signature
+				if (l.first == this->_lastSignature->id()) // link to itself
 				{
-					if (l.first == this->_lastSignature->id()) // link to itself
-					{
-						continue;
-					}
-
-					Signature *s = this->_signatures[l.first];
-
-					ULOGGER_DEBUG("Link to id=%d", l.first);
-					ULOGGER_DEBUG("Weight=%d", s->getWeight());
-					pcl::PointXYZ linkedPos = s->getPose().position();
-
-					newGaps += sqrt(pow(signaturePos.x - linkedPos.x, 2) +
-									pow(signaturePos.y - linkedPos.y, 2) +
-									pow(signaturePos.z - linkedPos.z, 2));
-					newConnections++;
-
-					regionIdsConnected.insert(s->regionId()); // regions to retrieve from db
-					this->cacheSignatureForClustering(s);
+					continue;
 				}
 
-				ULOGGER_DEBUG("New gaps=%f", newGaps);
+				Signature *s = this->_signatures[l.first];
 
-				this->_totalMesh = (this->_totalMesh * this->_totalConnections + newGaps) / (this->_totalConnections + newConnections);
-				this->_totalConnections = this->_totalConnections + newConnections;
+				ULOGGER_DEBUG("Link to id=%d", l.first);
+				ULOGGER_DEBUG("Weight=%d", s->getWeight());
+				pcl::PointXYZ linkedPos = s->getPose().position();
 
-				ULOGGER_DEBUG("Total mesh=%f", this->_totalMesh);
-				ULOGGER_DEBUG("Total connections=%d", this->_totalConnections);
+				newGaps += sqrt(pow(signaturePos.x - linkedPos.x, 2) +
+								pow(signaturePos.y - linkedPos.y, 2) +
+								pow(signaturePos.z - linkedPos.z, 2));
+				newConnections++;
 
-				this->updateGlobalClusteringParams();
+				regionIdsConnected.insert(s->regionId()); // regions to retrieve from db
+				this->cacheSignatureForClustering(s);
+			}
 
-				for (const auto &id : regionIdsConnected) // retrieve signatures for these regions
-				{
-					ULOGGER_DEBUG("Region connected id=%d", id);
-					std::list<Signature *> signaturesRetrieved;
-					if (_dbDriver)
-					{
-						this->_dbDriver->loadSignaturesByRegion(id, signaturesRetrieved, true, false);
-					}
-					else
-					{
-						UFATAL("DBDriver not valid in Memory assignRegion");
-					}
-					// for(auto iter = signaturesForRegion.begin(); iter != signaturesForRegion.end(); ++iter){
-					// 	if (signatures.count((*iter)->id())){
-					// 		(*iter) = signatures[(*iter)->id()];
-					// 	}
-					// }
-					this->cacheSignaturesForClustering(signaturesRetrieved);
-				}
+			ULOGGER_DEBUG("New gaps=%f", newGaps);
 
-				Region *candidate = 0;
-				float minScattering = 1e10;
-				std::set<int> regionsVisitedIds;
-				for (const auto &l : this->_lastSignature->getLinks()) // for each link (here is already retrieved each connected region)
-				{
-					if (l.first == this->_lastSignature->id()) // link to itself
-					{
-						continue;
-					}
-					Signature *s = this->_clusteringSignatures[l.first];
+			this->_totalMesh = (this->_totalMesh * this->_totalConnections + newGaps) / (this->_totalConnections + newConnections);
+			this->_totalConnections = this->_totalConnections + newConnections;
 
-					if (s) // should always be != null
-					{
-						if (regionsVisitedIds.find(s->regionId()) != regionsVisitedIds.end()) // already tried
-						{
-							continue;
-						}
-						regionsVisitedIds.insert(s->regionId());
+			ULOGGER_DEBUG("Total mesh=%f", this->_totalMesh);
+			ULOGGER_DEBUG("Total connections=%d", this->_totalConnections);
 
-						Region *region = this->getRegion(s->regionId());
-						this->_lastSignature->setRegionId(region->id());
-						Region *updatedRegion = this->getRegion(s->regionId());
-						this->_lastSignature->setRegionId(-1);
+			std::ofstream clusteringFile;
+			clusteringFile.open("/data/clustering.txt", std::ios::trunc);
+			clusteringFile << this->_totalMesh << " " << this->_totalConnections << "\n";
+			clusteringFile.close();
 
-						float deltaScattering = updatedRegion->scattering2() - region->scattering2();
-						float defaultThreshold = this->_clusteringThreshold + this->_defaultScattering;
-						float distance = (pow(updatedRegion->centroid().x - signaturePos.x, 2) +
-										  pow(updatedRegion->centroid().y - signaturePos.y, 2) +
-										  pow(updatedRegion->centroid().z - signaturePos.z, 2));
-						float radius2 = pow(this->_radiusUpperBound, 2);
+			this->updateGlobalClusteringParams();
 
-						// ULOGGER_DEBUG("Delta scattering=%f", deltaScattering);
-						// ULOGGER_DEBUG("Default threshold=%f", defaultThreshold);
-						// ULOGGER_DEBUG("Distance=%f", distance);
-						// ULOGGER_DEBUG("Radius^2=%f", radius2);
-						// ULOGGER_DEBUG("Scattering=%f", updatedRegion->scattering2());
-						// ULOGGER_DEBUG("Min scattering=%f", minScattering);
-
-						ULOGGER_DEBUG("Clustering condition: (%f < %f) && (%f < %f) && (%f < %f)", deltaScattering,
-									  defaultThreshold,
-									  distance,
-									  radius2,
-									  updatedRegion->scattering2(),
-									  minScattering);
-
-						// std::cout << "SCATTERING +: " << updatedRegion->scattering2() - region->scattering2() << "\n";
-						// std::cout << "SECOND: " << this->_memory->clusteringThreshold() + this->_memory->defaultScattering() << "\n";
-						// std::cout << "DISTANCE: " << (pow(updatedRegion->centroid().x - signaturePos.x, 2) +
-						// 	  pow(updatedRegion->centroid().y - signaturePos.y, 2) +
-						// 	  pow(updatedRegion->centroid().z - signaturePos.z, 2)) << "\n";
-						// std::cout << "RADIUS: " << pow(this->_memory->radiusUpperBound(), 2) << "\n";
-						// std::cout << "SCATTERING: " << updatedRegion->scattering2();
-
-						if ((deltaScattering < defaultThreshold) &&
-							(distance < radius2) &&
-							(updatedRegion->scattering2() < minScattering))
-						{
-							ULOGGER_DEBUG("New candidate id=%d", updatedRegion->id());
-							minScattering = updatedRegion->scattering2();
-							candidate = updatedRegion;
-							delete region;
-						}
-						else
-						{
-							delete updatedRegion;
-						}
-					}
-				}
-				if (candidate) // if a candidate is found
-				{
-					ULOGGER_DEBUG("Candidate id=%d", candidate->id());
-					this->_currentRegionId = candidate->id();
-					this->_lastSignature->setRegionId(this->_currentRegionId);
-					delete candidate;
-				}
-				else // new region
-				{
-					this->_regionCounter++;
-					this->_currentRegionId = this->_regionCounter;
-					ULOGGER_DEBUG("No candidate found. New region id=%d", this->_regionCounter);
-					this->_lastSignature->setRegionId(this->_regionCounter);
-				}
-
-				std::unordered_map<int, int> signaturesMoved; // id, regionId
-				this->moveFromRegion(this->_lastSignature, signaturesMoved);
-				for (const auto &l : this->_lastSignature->getLinks()) // connected to the current signature, already cached
-				{
-					if (l.first == this->_lastSignature->id()) // link to itself
-					{
-						continue;
-					}
-					Signature *s = this->_clusteringSignatures[l.first];
-					this->moveFromRegion(s, signaturesMoved);
-				}
-
-				for (const auto &id_region : signaturesMoved)
-				{
-					// this->addIdInExperience(id_region.first);
-					this->updateInExperience(id_region.first, id_region.second);
-				}
-
-				if (signaturesMoved.count(this->_lastSignature->id()))
-				{
-					this->_currentRegionId = this->_lastSignature->regionId();
-				}
-
+			for (const auto &id : regionIdsConnected) // retrieve signatures for these regions
+			{
+				ULOGGER_DEBUG("Region connected id=%d", id);
+				std::list<Signature *> signaturesRetrieved;
 				if (_dbDriver)
 				{
-					this->_dbDriver->updateRegions(signaturesMoved);
+					this->_dbDriver->loadSignaturesByRegion(id, signaturesRetrieved, true, false);
 				}
 				else
 				{
 					UFATAL("DBDriver not valid in Memory assignRegion");
 				}
-
-				this->clearCachedSignaturesForClustering();
+				// for(auto iter = signaturesForRegion.begin(); iter != signaturesForRegion.end(); ++iter){
+				// 	if (signatures.count((*iter)->id())){
+				// 		(*iter) = signatures[(*iter)->id()];
+				// 	}
+				// }
+				this->cacheSignaturesForClustering(signaturesRetrieved);
 			}
+
+			Region *candidate = 0;
+			float minScattering = 1e10;
+			std::set<int> regionsVisitedIds;
+			for (const auto &l : this->_lastSignature->getLinks()) // for each link (here is already retrieved each connected region)
+			{
+				if (l.first == this->_lastSignature->id()) // link to itself
+				{
+					continue;
+				}
+				Signature *s = this->_clusteringSignatures[l.first];
+
+				if (s) // should always be != null
+				{
+					if (regionsVisitedIds.find(s->regionId()) != regionsVisitedIds.end()) // already tried
+					{
+						continue;
+					}
+					regionsVisitedIds.insert(s->regionId());
+
+					Region *region = this->getRegion(s->regionId());
+					this->_lastSignature->setRegionId(region->id());
+					Region *updatedRegion = this->getRegion(s->regionId());
+					this->_lastSignature->setRegionId(-1);
+
+					float deltaScattering = updatedRegion->scattering2() - region->scattering2();
+					float defaultThreshold = this->_clusteringThreshold + this->_defaultScattering;
+					float distance = (pow(updatedRegion->centroid().x - signaturePos.x, 2) +
+									  pow(updatedRegion->centroid().y - signaturePos.y, 2) +
+									  pow(updatedRegion->centroid().z - signaturePos.z, 2));
+					float radius2 = pow(this->_radiusUpperBound, 2);
+
+					// ULOGGER_DEBUG("Delta scattering=%f", deltaScattering);
+					// ULOGGER_DEBUG("Default threshold=%f", defaultThreshold);
+					// ULOGGER_DEBUG("Distance=%f", distance);
+					// ULOGGER_DEBUG("Radius^2=%f", radius2);
+					// ULOGGER_DEBUG("Scattering=%f", updatedRegion->scattering2());
+					// ULOGGER_DEBUG("Min scattering=%f", minScattering);
+
+					ULOGGER_DEBUG("Clustering condition: (%f < %f) && (%f < %f) && (%f < %f)", deltaScattering,
+								  defaultThreshold,
+								  distance,
+								  radius2,
+								  updatedRegion->scattering2(),
+								  minScattering);
+
+					// std::cout << "SCATTERING +: " << updatedRegion->scattering2() - region->scattering2() << "\n";
+					// std::cout << "SECOND: " << this->_memory->clusteringThreshold() + this->_memory->defaultScattering() << "\n";
+					// std::cout << "DISTANCE: " << (pow(updatedRegion->centroid().x - signaturePos.x, 2) +
+					// 	  pow(updatedRegion->centroid().y - signaturePos.y, 2) +
+					// 	  pow(updatedRegion->centroid().z - signaturePos.z, 2)) << "\n";
+					// std::cout << "RADIUS: " << pow(this->_memory->radiusUpperBound(), 2) << "\n";
+					// std::cout << "SCATTERING: " << updatedRegion->scattering2();
+
+					if ((deltaScattering < defaultThreshold) &&
+						(distance < radius2) &&
+						(updatedRegion->scattering2() < minScattering))
+					{
+						ULOGGER_DEBUG("New candidate id=%d", updatedRegion->id());
+						minScattering = updatedRegion->scattering2();
+						candidate = updatedRegion;
+						delete region;
+					}
+					else
+					{
+						delete updatedRegion;
+					}
+				}
+			}
+			if (candidate) // if a candidate is found
+			{
+				ULOGGER_DEBUG("Candidate id=%d", candidate->id());
+				this->_currentRegionId = candidate->id();
+				this->_lastSignature->setRegionId(this->_currentRegionId);
+				delete candidate;
+			}
+			else // new region
+			{
+				this->_regionCounter++;
+				this->_currentRegionId = this->_regionCounter;
+				ULOGGER_DEBUG("No candidate found. New region id=%d", this->_regionCounter);
+				this->_lastSignature->setRegionId(this->_regionCounter);
+			}
+
+			std::unordered_map<int, int> signaturesMoved; // id, regionId
+			this->moveFromRegion(this->_lastSignature, signaturesMoved);
+			for (const auto &l : this->_lastSignature->getLinks()) // connected to the current signature, already cached
+			{
+				if (l.first == this->_lastSignature->id()) // link to itself
+				{
+					continue;
+				}
+				Signature *s = this->_clusteringSignatures[l.first];
+				this->moveFromRegion(s, signaturesMoved);
+			}
+
+			for (const auto &id_region : signaturesMoved)
+			{
+				// this->addIdInExperience(id_region.first);
+				this->updateInExperience(id_region.first, id_region.second);
+			}
+
+			if (signaturesMoved.count(this->_lastSignature->id()))
+			{
+				this->_currentRegionId = this->_lastSignature->regionId();
+			}
+
+			if (_dbDriver)
+			{
+				this->_dbDriver->updateRegions(signaturesMoved);
+			}
+			else
+			{
+				UFATAL("DBDriver not valid in Memory assignRegion");
+			}
+
+			this->clearCachedSignaturesForClustering();
 		}
 		else if (this->_lastSignature->getWeight() == -1)
 		{
@@ -6894,7 +6930,7 @@ namespace rtabmap
 		ULOGGER_DEBUG("Time for clustering=%fs", timer.ticks());
 	}
 
-	void Memory::addIdInExperience(int id, int regionId) 
+	void Memory::addIdInExperience(int id, int regionId)
 	{
 		if (this->_currentExperience.count(id))
 		{
@@ -6992,6 +7028,273 @@ namespace rtabmap
 		for (const auto &id_w : this->_workingMem)
 		{
 			ids.insert(id_w.first);
+		}
+	}
+
+	int Memory::readJsonLock(const std::string &filename, nlohmann::json &json) const
+	{
+		int status = 0;
+		int fileDescriptor = open(filename.c_str(), O_RDONLY);
+		if (fileDescriptor == -1)
+		{
+			ULOGGER_WARN("Error opening file");
+			status = -1;
+		}
+		else
+		{
+			// Try to acquire an exclusive lock (non-blocking)
+			struct flock fl;
+			fl.l_type = F_RDLCK; // Exclusive write lock
+			fl.l_whence = SEEK_SET;
+			fl.l_start = 0;
+			fl.l_len = 0;		 // Lock the entire file
+			fl.l_pid = getpid(); // Set the process ID
+
+			if (fcntl(fileDescriptor, F_SETLK, &fl) == -1)
+			{
+				ULOGGER_WARN("Error acquiring lock");
+				status = 1;
+			}
+			else
+			{
+				std::ifstream file(filename);
+				if (!file.is_open())
+				{
+					ULOGGER_DEBUG("Error opening the file: %s", filename);
+					status = -1;
+				}
+				else
+				{
+					try
+					{
+						json = nlohmann::json::parse(file);
+						file.close();
+						status = 0;
+					}
+					catch (const nlohmann::json::parse_error &e)
+					{
+						ULOGGER_DEBUG("Error parsing json: %s", filename.c_str());
+						status = 1;
+					}
+
+					ULOGGER_DEBUG("File readed: %s", filename.c_str());
+				}
+				// Release the lock
+				fl.l_type = F_UNLCK;
+				if (fcntl(fileDescriptor, F_SETLKW, &fl) == -1)
+				{
+					ULOGGER_WARN("Error releasing lock");
+				}
+				// Close the file
+			}
+		}
+		::close(fileDescriptor);
+		return status;
+	}
+
+	bool Memory::writeJsonLock(const std::string &filename, const nlohmann::json &json) const
+	{
+		bool done = false;
+		int fileDescriptor = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+		if (fileDescriptor == -1)
+		{
+			ULOGGER_WARN("Error opening file");
+		}
+		else
+		{
+			// Try to acquire an exclusive lock (non-blocking)
+			struct flock fl;
+			fl.l_type = F_WRLCK; // Exclusive write lock
+			fl.l_whence = SEEK_SET;
+			fl.l_start = 0;
+			fl.l_len = 0;		 // Lock the entire file
+			fl.l_pid = getpid(); // Set the process ID
+
+			if (fcntl(fileDescriptor, F_SETLK, &fl) == -1)
+			{
+				ULOGGER_WARN("Error acquiring lock");
+			}
+
+			else
+			{
+				std::string jsonStr = json.dump();
+				// Successfully acquired the lock, now write to the file
+				ssize_t res = write(fileDescriptor, jsonStr.c_str(), jsonStr.size());
+
+				if (res <= 0)
+				{
+					ULOGGER_WARN("Error writing on file");
+				}
+
+				// Release the lock
+				fl.l_type = F_UNLCK;
+				if (fcntl(fileDescriptor, F_SETLK, &fl) == -1)
+				{
+					ULOGGER_WARN("Error releasing lock");
+				}
+				else if (res > 0)
+				{
+					done = true;
+				}
+				// Close the file
+			}
+		}
+		::close(fileDescriptor);
+		return done;
+	}
+
+	bool Memory::writeJson(const std::string &filename, const nlohmann::json &json) const
+	{
+		UTimer timer;
+		timer.start();
+		std::string jsonStr = json.dump();
+		std::ofstream file(filename, std::ios::app);
+		if (!file.is_open())
+		{
+			ULOGGER_DEBUG("Error opening the file: %s", filename);
+			return false;
+		}
+		file << jsonStr;
+		file.close();
+		ULOGGER_DEBUG("Time to write image on file=%fs", timer.ticks());
+		return true;
+	}
+
+	bool Memory::getImageString(int id, const cv::Mat &image, std::string &imageStr) const
+	{
+		ULOGGER_DEBUG("Image empty=%d", image.empty());
+		ULOGGER_DEBUG("Image type=%d", image.type());
+		if (!image.empty() && image.type() == CV_8UC3)
+		{
+			std::vector<uchar> buffer;
+			cv::imencode(".jpg", image, buffer);
+			auto *imageEncoded = reinterpret_cast<unsigned char *>(buffer.data());
+			imageStr = base64_encode(imageEncoded, buffer.size());
+
+			// imageJson["rows"] = image.rows;
+			// imageJson["cols"] = image.cols;
+			// imageJson["channels"] = image.channels();
+			// imageJson["data"] = imageEncodedStr;
+
+			// jsonData["id"] = signature->id();
+			return true;
+		}
+		return false;
+	}
+
+	bool Memory::writeJsonImage(int id, const std::string &filename, const std::string &imageStr, bool lock) const
+	{
+		nlohmann::json json;
+		json["id"] = id;
+		json["image"] = imageStr;
+
+		bool stopped = false;
+
+		UTimer timer;
+		timer.start();
+		double timeElapsed = 0;
+
+		while ((lock && !this->writeJsonLock(filename, json)) || (!lock && !this->writeJson(filename, json)))
+		{
+			timeElapsed = timer.getElapsedTime();
+			if (timeElapsed > 0.1)
+			{
+				stopped = true;
+				break;
+			}
+			// std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		if (!stopped)
+		{
+			ULOGGER_DEBUG("Time to write example id=%d on file=%fs", id, timer.ticks());
+			return true;
+		}
+		ULOGGER_DEBUG("Time to write exceded. Image id=%d not written on file=%s", id, filename);
+	}
+
+	void Memory::writeExperience(int id)
+	{
+		nlohmann::json json;
+		json["id"] = id;
+		json["experience"] = this->currentExperience();
+
+		std::string filename = "/data/experience.json";
+
+		double timeElapsed = 0;
+		UTimer timer;
+		timer.start();
+		while (!this->writeJsonLock(filename, json) && timer.getElapsedTime() < 0.1)
+		{
+			// std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		this->_currentExperience.clear();
+		ULOGGER_DEBUG("Time to write experience on file=%fs", timer.ticks());
+	}
+
+	void Memory::sortRegionsProbabilities(const std::vector<float> &predictions, std::vector<std::pair<float, int>> &indices) const
+	{
+		for (int i = 0; i < predictions.size(); i++)
+		{
+			indices.push_back({predictions[i], i});
+		}
+
+		std::sort(indices.rbegin(), indices.rend());
+	}
+
+	void Memory::reactivateTopKRegions(double & timeDbAccess)
+	{
+		std::string predictionsFilename = "/data/predictions.json";
+		nlohmann::json json;
+		std::vector<float> predictions;
+
+		UTimer timer;
+		timer.start();
+		int status;
+
+		while (timer.getElapsedTime() < 0.1)
+		{
+			status = this->readJsonLock(predictionsFilename, json);
+			if (status == -1 || status == 0)
+			{
+				break;
+			}
+		}
+		ULOGGER_DEBUG("Time for read predictions=%fs", timer.ticks());
+		if (status == 0)
+		{
+			ULOGGER_DEBUG("Prediction on node=%d", json["id"].get<int>());
+			predictions = json["predictions"].get<std::vector<float>>();
+			std::vector<std::pair<float, int>> indices;
+			this->sortRegionsProbabilities(predictions, indices);
+			std::list<int> regionsToRetrieve;
+			std::set<int> excludedIds;
+			this->getIdsInRAM(excludedIds);
+			this->_topKRegions.clear();
+
+			ULOGGER_DEBUG("Signatures already in RAM: %d", excludedIds.size());
+			for (int i = 0; i < indices.size(); i++)
+			{
+				if (i >= this->_topK)
+				{
+					break;
+				}
+				ULOGGER_DEBUG("Top %d region predicted: %d with probability %f", i + 1, indices[i].second, indices[i].first);
+				regionsToRetrieve.emplace_back(indices[i].second);
+				this->_topKRegions.insert(indices[i].second);
+			}
+			// for (int i = 0; i < this->_topK; i++)
+			// {
+			// 	if (i < indices.size())
+			// 	{
+			// 		ULOGGER_DEBUG("Top %d region predicted: %d with probability %f", i + 1, indices[i].second, indices[i].first);
+			// 		regionsToRetrieve.emplace_back(indices[i].second);
+			// 		this->_topKRegions.insert
+			// 	}
+			// }
+			ULOGGER_DEBUG("Time parse and sort predictions=%fs", timer.ticks());
+			std::set<int> reactivatedRegionsIds = this->reactivateSignaturesByRegions(regionsToRetrieve, timeDbAccess, excludedIds);
+			ULOGGER_DEBUG("Time for reactivate signatures by region=%fs", timer.ticks());
+			ULOGGER_DEBUG("Reactivated signatures by region: %d", reactivatedRegionsIds.size());
 		}
 	}
 
