@@ -2334,8 +2334,7 @@ namespace rtabmap
 			// TODO load by region
 			//  step 1: network prediction
 			//  step 2: load by region
-
-			// step 1: for now write on file
+			//  step 1: for now write on file
 			if ((!signature->isBadSignature() && (signature->getWeight() >= 0) && !smallDisplacement && !tooFastMovement))
 			{
 				UTimer inferenceTimer;
