@@ -45,8 +45,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <opencv2/features2d/features2d.hpp>
 #include <pcl/pcl_config.h>
 
-#include <nlohmann/json.hpp>
-
 namespace rtabmap {
 
 class Signature;
@@ -288,12 +286,6 @@ public:
 	void updateInExperience(int id, int regionId);
 	void getIdsInRAM(std::set<int> &ids) const;
 
-	void writeExperience(int id);
-	bool getImageString(int id, const cv::Mat &image, std::string &imageStr) const;
-	int readJsonLock(const std::string &filename, nlohmann::json &json) const;
-	bool writeJsonImage(int id, const std::string &filename, const std::string &imageStr, bool lock = true) const;
-	bool writeJsonLock(const std::string &filename, const nlohmann::json &json) const;
-	bool writeJson(const std::string &filename, const nlohmann::json &json) const;
 	void sortRegionsProbabilities(const std::vector<float> &predictions, std::vector<std::pair<float, int>> &indices) const;
 	inline int topK() const { return this->_topK; }
 	inline const std::set<int> &topKRegions() const { return this->_topKRegions; } 

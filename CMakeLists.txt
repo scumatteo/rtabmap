@@ -15,8 +15,6 @@ INCLUDE(GNUInstallDirs)
 ####### local cmake modules #######
 SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake_modules")
 
-find_package(nlohmann_json REQUIRED)
-
 #######################
 # VERSION
 #######################
@@ -1108,10 +1106,10 @@ IF(QT4_FOUND OR Qt5_FOUND OR Qt6_FOUND)
    ELSE()
       set(CONF_QT_VERSION 6)
    ENDIF()
-   target_link_libraries(rtabmap INTERFACE rtabmap_utilite rtabmap_core rtabmap_gui nlohmann_json::nlohmann_json)
+   target_link_libraries(rtabmap INTERFACE rtabmap_utilite rtabmap_core rtabmap_gui)
 ELSE()
    set(CONF_WITH_GUI OFF)
-   target_link_libraries(rtabmap INTERFACE rtabmap_utilite rtabmap_core nlohmann_json::nlohmann_json)
+   target_link_libraries(rtabmap INTERFACE rtabmap_utilite rtabmap_core)
 ENDIF()
 install(TARGETS rtabmap EXPORT rtabmapTargets)
 export(EXPORT rtabmapTargets
