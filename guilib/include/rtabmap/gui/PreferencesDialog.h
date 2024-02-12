@@ -264,6 +264,8 @@ public:
 	double getBilateralSigmaS() const;
 	double getBilateralSigmaR() const;
 	int getSourceImageDecimation() const;
+	int getSourceHistogramMethod() const;
+	bool isSourceFeatureDetection() const;
 	bool isSourceStereoDepthGenerated() const;
 	bool isSourceStereoExposureCompensation() const;
 	bool isSourceScanFromDepth() const;
@@ -348,6 +350,8 @@ private Q_SLOTS:
 	void changeOdometryORBSLAMVocabulary();
 	void changeOdometryOKVISConfigPath();
 	void changeOdometryVINSConfigPath();
+	void changeOdometryOpenVINSLeftMask();
+	void changeOdometryOpenVINSRightMask();
 	void changeIcpPMConfigPath();
 	void changeSuperPointModelPath();
 	void changePyMatcherPath();

@@ -87,7 +87,8 @@ SET(SRC_FILES
     odometry/OdometryViso2.cpp
     odometry/OdometryDVO.cpp
     odometry/OdometryOkvis.cpp
-    odometry/OdometryORBSLAM.cpp
+    odometry/OdometryORBSLAM2.cpp
+    odometry/OdometryORBSLAM3.cpp
     odometry/OdometryLOAM.cpp
     odometry/OdometryFLOAM.cpp
     odometry/OdometryMSCKF.cpp
@@ -209,6 +210,10 @@ IF(WITH_PYTHON AND Python3_FOUND)
 		${PUBLIC_LIBRARIES}
 		Python3::Python
 		Python3::NumPy
+	)
+	SET(LIBRARIES
+		${LIBRARIES}
+		pybind11::embed
 	)
 	SET(SRC_FILES
 		${SRC_FILES}
@@ -750,6 +755,7 @@ foreach(arg ${RESOURCES})
    get_filename_component(filename ${arg} NAME)
    string(REPLACE "." "_" output ${filename})
    set(RESOURCES_HEADERS "${RESOURCES_HEADERS}" "${CMAKE_CURRENT_BINARY_DIR}/${output}.h")
+   set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/${output}.h" PROPERTY SKIP_AUTOGEN ON)
 endforeach(arg ${RESOURCES})
 
 #MESSAGE(STATUS "RESOURCES = ${RESOURCES}")

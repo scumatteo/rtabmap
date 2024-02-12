@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2010-2021, Mathieu Labbe - IntRoLab - Universite de Sherbrooke
+Copyright (c) 2010-2016, Mathieu Labbe - IntRoLab - Universite de Sherbrooke
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -25,42 +25,47 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef ODOMETRYOPENVINS_H_
-#define ODOMETRYOPENVINS_H_
+#ifndef ODOMETRYORBSLAM3_H_
+#define ODOMETRYORBSLAM3_H_
 
 #include <rtabmap/core/Odometry.h>
 
-namespace ov_msckf {
-class VioManager;
-struct VioManagerOptions;
-}
+#if defined(RTABMAP_ORB_SLAM) and RTABMAP_ORB_SLAM == 3
+#include <System.h>
+#endif
 
 namespace rtabmap {
 
-class RTABMAP_CORE_EXPORT OdometryOpenVINS : public Odometry
+class RTABMAP_CORE_EXPORT OdometryORBSLAM3 : public Odometry
 {
 public:
-	OdometryOpenVINS(const rtabmap::ParametersMap & parameters = rtabmap::ParametersMap());
+	OdometryORBSLAM3(const rtabmap::ParametersMap & parameters = rtabmap::ParametersMap());
+	virtual ~OdometryORBSLAM3();
 
 	virtual void reset(const Transform & initialPose = Transform::getIdentity());
-	virtual Odometry::Type getType() {return Odometry::kTypeOpenVINS;}
-	virtual bool canProcessRawImages() const {return true;}
-	virtual bool canProcessAsyncIMU() const {return true;}
+	virtual Odometry::Type getType() {return Odometry::kTypeORBSLAM;}
+	virtual bool canProcessAsyncIMU() const;
 
 private:
 	virtual Transform computeTransform(SensorData & image, const Transform & guess = Transform(), OdometryInfo * info = 0);
 
+	bool init(const rtabmap::CameraModel & model, double stamp, bool stereo, double baseline);
 private:
-#ifdef RTABMAP_OPENVINS
-	std::unique_ptr<ov_msckf::VioManager> vioManager_;
-	std::unique_ptr<ov_msckf::VioManagerOptions> params_;
-	bool initGravity_;
-	Transform previousPoseInv_;
-	Transform imuLocalTransformInv_;
-	Eigen::Matrix<double, 6, 6> Phi_;
+#if defined(RTABMAP_ORB_SLAM) and RTABMAP_ORB_SLAM == 3
+	ORB_SLAM3::System * orbslam_;
+	bool firstFrame_;
+	Transform originLocalTransform_;
+	Transform previousPose_;
+	bool useIMU_;
+	Transform imuLocalTransform_;
+	ParametersMap parameters_;
+	std::vector<ORB_SLAM3::IMU::Point> orbslamImus_;
+	double lastImuStamp_;
+	double lastImageStamp_;
 #endif
+
 };
 
 }
 
-#endif /* ODOMETRYOPENVINS_H_ */
+#endif /* ODOMETRYORBSLAM_H3_ */

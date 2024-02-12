@@ -598,10 +598,15 @@ MainWindow::MainWindow(PreferencesDialog * prefDialog, QWidget * parent, bool sh
 	_ui->statsToolBox->updateStat("Planning/Length/m", false);
 
 	_ui->statsToolBox->updateStat("Camera/Time capturing/ms", false);
+	_ui->statsToolBox->updateStat("Camera/Time undistort depth/ms", false);
+	_ui->statsToolBox->updateStat("Camera/Time bilateral filtering/ms", false);
 	_ui->statsToolBox->updateStat("Camera/Time decimation/ms", false);
 	_ui->statsToolBox->updateStat("Camera/Time disparity/ms", false);
 	_ui->statsToolBox->updateStat("Camera/Time mirroring/ms", false);
+	_ui->statsToolBox->updateStat("Camera/Time histogram equalization/ms", false);
+	_ui->statsToolBox->updateStat("Camera/Time exposure compensation/ms", false);
 	_ui->statsToolBox->updateStat("Camera/Time scan from depth/ms", false);
+	_ui->statsToolBox->updateStat("Camera/Time total/ms", false);
 
 	_ui->statsToolBox->updateStat("Odometry/ID/", false);
 	_ui->statsToolBox->updateStat("Odometry/Features/", false);
@@ -988,15 +993,16 @@ void MainWindow::processCameraInfo(const rtabmap::CameraInfo & info)
 	}
 	if(_preferencesDialog->isCacheSavedInFigures() || _ui->statsToolBox->isVisible())
 	{
-		_ui->statsToolBox->updateStat("Camera/Time total/ms", _preferencesDialog->isTimeUsedInFigures()?info.stamp-_firstStamp:(float)info.id, info.timeTotal*1000.0f, _preferencesDialog->isCacheSavedInFigures());
 		_ui->statsToolBox->updateStat("Camera/Time capturing/ms", _preferencesDialog->isTimeUsedInFigures()?info.stamp-_firstStamp:(float)info.id, info.timeCapture*1000.0f, _preferencesDialog->isCacheSavedInFigures());
 		_ui->statsToolBox->updateStat("Camera/Time undistort depth/ms", _preferencesDialog->isTimeUsedInFigures()?info.stamp-_firstStamp:(float)info.id, info.timeUndistortDepth*1000.0f, _preferencesDialog->isCacheSavedInFigures());
 		_ui->statsToolBox->updateStat("Camera/Time bilateral filtering/ms", _preferencesDialog->isTimeUsedInFigures()?info.stamp-_firstStamp:(float)info.id, info.timeBilateralFiltering*1000.0f, _preferencesDialog->isCacheSavedInFigures());
 		_ui->statsToolBox->updateStat("Camera/Time decimation/ms", _preferencesDialog->isTimeUsedInFigures()?info.stamp-_firstStamp:(float)info.id, info.timeImageDecimation*1000.0f, _preferencesDialog->isCacheSavedInFigures());
 		_ui->statsToolBox->updateStat("Camera/Time disparity/ms", _preferencesDialog->isTimeUsedInFigures()?info.stamp-_firstStamp:(float)info.id, info.timeDisparity*1000.0f, _preferencesDialog->isCacheSavedInFigures());
 		_ui->statsToolBox->updateStat("Camera/Time mirroring/ms", _preferencesDialog->isTimeUsedInFigures()?info.stamp-_firstStamp:(float)info.id, info.timeMirroring*1000.0f, _preferencesDialog->isCacheSavedInFigures());
+		_ui->statsToolBox->updateStat("Camera/Time histogram equalization/ms", _preferencesDialog->isTimeUsedInFigures()?info.stamp-_firstStamp:(float)info.id, info.timeHistogramEqualization*1000.0f, _preferencesDialog->isCacheSavedInFigures());
 		_ui->statsToolBox->updateStat("Camera/Time exposure compensation/ms", _preferencesDialog->isTimeUsedInFigures()?info.stamp-_firstStamp:(float)info.id, info.timeStereoExposureCompensation*1000.0f, _preferencesDialog->isCacheSavedInFigures());
 		_ui->statsToolBox->updateStat("Camera/Time scan from depth/ms", _preferencesDialog->isTimeUsedInFigures()?info.stamp-_firstStamp:(float)info.id, info.timeScanFromDepth*1000.0f, _preferencesDialog->isCacheSavedInFigures());
+		_ui->statsToolBox->updateStat("Camera/Time total/ms", _preferencesDialog->isTimeUsedInFigures()?info.stamp-_firstStamp:(float)info.id, info.timeTotal*1000.0f, _preferencesDialog->isCacheSavedInFigures());
 	}
 
 	Q_EMIT(cameraInfoProcessed());
@@ -1012,6 +1018,7 @@ void MainWindow::processOdometry(const rtabmap::OdometryEvent & odom, bool dataI
 	UDEBUG("");
 	_processingOdometry = true;
 	UTimer time;
+	UTimer timeTotal;
 	// Process Data
 
 	// Set color code as tooltip
@@ -1707,6 +1714,11 @@ void MainWindow::processOdometry(const rtabmap::OdometryEvent & odom, bool dataI
 					//draw lines
 					UASSERT(odom.info().refCorners.size() == odom.info().newCorners.size());
 					std::set<int> inliers(odom.info().cornerInliers.begin(), odom.info().cornerInliers.end());
+					int subImageWidth = 0;
+					if(data->cameraModels().size()>1 || data->stereoCameraModels().size()>1)
+					{
+						subImageWidth = data->cameraModels().size()?data->cameraModels()[0].imageWidth():data->stereoCameraModels()[0].left().imageWidth();
+					}
 					for(unsigned int i=0; i<odom.info().refCorners.size(); ++i)
 					{
 						if(_ui->imageView_odometry->isFeaturesShown() && inliers.find(i) != inliers.end())
@@ -1715,12 +1727,16 @@ void MainWindow::processOdometry(const rtabmap::OdometryEvent & odom, bool dataI
 						}
 						if(_ui->imageView_odometry->isLinesShown())
 						{
-							_ui->imageView_odometry->addLine(
-									odom.info().newCorners[i].x,
-									odom.info().newCorners[i].y,
-									odom.info().refCorners[i].x,
-									odom.info().refCorners[i].y,
-									inliers.find(i) != inliers.end()?Qt::blue:Qt::yellow);
+							// just draw lines in same camera
+							if(subImageWidth==0 || int(odom.info().refCorners[i].x/subImageWidth) == int(odom.info().newCorners[i].x/subImageWidth))
+							{
+								_ui->imageView_odometry->addLine(
+										odom.info().newCorners[i].x,
+										odom.info().newCorners[i].y,
+										odom.info().refCorners[i].x,
+										odom.info().refCorners[i].y,
+										inliers.find(i) != inliers.end()?Qt::blue:Qt::yellow);
+							}
 						}
 					}
 				}
@@ -1883,7 +1899,7 @@ void MainWindow::processOdometry(const rtabmap::OdometryEvent & odom, bool dataI
 			_ui->statsToolBox->updateStat("Odometry/Distance/m", _preferencesDialog->isTimeUsedInFigures()?data->stamp()-_firstStamp:(float)data->id(), odom.info().distanceTravelled, _preferencesDialog->isCacheSavedInFigures());
 		}
 
-		_ui->statsToolBox->updateStat("GUI/Refresh odom/ms", _preferencesDialog->isTimeUsedInFigures()?data->stamp()-_firstStamp:(float)data->id(), time.elapsed()*1000.0, _preferencesDialog->isCacheSavedInFigures());
+		_ui->statsToolBox->updateStat("GUI/Refresh odom/ms", _preferencesDialog->isTimeUsedInFigures()?data->stamp()-_firstStamp:(float)data->id(), timeTotal.elapsed()*1000.0, _preferencesDialog->isCacheSavedInFigures());
 		UDEBUG("Time updating Stats toolbox: %fs", time.ticks());
 	}
 	_processingOdometry = false;
@@ -5758,6 +5774,11 @@ void MainWindow::startDetection()
 	_camera->setMirroringEnabled(_preferencesDialog->isSourceMirroring());
 	_camera->setColorOnly(_preferencesDialog->isSourceRGBDColorOnly());
 	_camera->setImageDecimation(_preferencesDialog->getSourceImageDecimation());
+	_camera->setHistogramMethod(_preferencesDialog->getSourceHistogramMethod());
+	if(_preferencesDialog->isSourceFeatureDetection())
+	{
+		_camera->enableFeatureDetection(parameters);
+	}
 	_camera->setStereoToDepth(_preferencesDialog->isSourceStereoDepthGenerated());
 	_camera->setStereoExposureCompensation(_preferencesDialog->isSourceStereoExposureCompensation());
 	_camera->setScanParameters(

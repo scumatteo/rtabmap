@@ -1,5 +1,5 @@
 # Top-Level CmakeLists.txt
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 PROJECT( RTABMap )
 SET(PROJECT_PREFIX rtabmap)
 
@@ -325,6 +325,11 @@ IF(WITH_QT)
     ENDIF()
         
     IF(QT4_FOUND OR Qt5_FOUND OR Qt6_FOUND)
+        # For VCPKG build, set those global variables to off, 
+        # we will enable them for jsut specific targets
+        set(CMAKE_AUTOMOC OFF)
+        set(CMAKE_AUTORCC OFF)
+        set(CMAKE_AUTOUIC OFF)
         IF("${VTK_MAJOR_VERSION}" EQUAL 5)
             FIND_PACKAGE(QVTK REQUIRED) # only for VTK 5
         ELSE()
@@ -389,6 +394,7 @@ IF(WITH_PYTHON)
     FIND_PACKAGE(Python3 COMPONENTS Interpreter Development NumPy)
     IF(Python3_FOUND)
         MESSAGE(STATUS "Found Python3")
+        FIND_PACKAGE(pybind11 REQUIRED)
     ENDIF(Python3_FOUND)
 ENDIF(WITH_PYTHON)
 
@@ -773,7 +779,7 @@ IF(WITH_ORB_SLAM AND NOT G2O_FOUND)
 ENDIF(WITH_ORB_SLAM AND NOT G2O_FOUND)
 
 IF(NOT MSVC)
-    IF(Qt6_FOUND OR (G2O_FOUND AND G2O_CPP11 EQUAL 1))
+    IF(Qt6_FOUND OR (G2O_FOUND AND G2O_CPP11 EQUAL 1) OR TORCH_FOUND)
       # Qt6 requires c++17
       include(CheckCXXCompilerFlag)
       CHECK_CXX_COMPILER_FLAG("-std=c++17" COMPILER_SUPPORTS_CXX17)
@@ -784,7 +790,7 @@ IF(NOT MSVC)
         message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++17 support. Please use a different C++ compiler if you want to use Qt6.")
       ENDIF()
     ENDIF()
-    IF((NOT (${CMAKE_CXX_STANDARD} STREQUAL "17")) AND (msckf_vio_FOUND OR loam_velodyne_FOUND OR floam_FOUND OR PCL_VERSION VERSION_GREATER "1.9.1" OR TORCH_FOUND OR G2O_FOUND OR CCCoreLib_FOUND OR Open3D_FOUND))
+    IF((NOT (${CMAKE_CXX_STANDARD} STREQUAL "17")) AND (msckf_vio_FOUND OR loam_velodyne_FOUND OR floam_FOUND OR PCL_VERSION VERSION_GREATER "1.9.1" OR G2O_FOUND OR CCCoreLib_FOUND OR Open3D_FOUND))
      #MSCKF_VIO, LOAM, PCL>=1.10, latest g2o and CCCoreLib require c++14
      include(CheckCXXCompilerFlag)
       CHECK_CXX_COMPILER_FLAG("-std=c++14" COMPILER_SUPPORTS_CXX14)
@@ -810,6 +816,7 @@ IF(NOT MSVC)
            open_chisel_FOUND OR
            vins_FOUND OR
            ov_msckf_FOUND OR
+           msckf_vio_FOUND OR
            libpointmatcher_FOUND))
      #Newest versions require std11
      include(CheckCXXCompilerFlag)
@@ -824,6 +831,7 @@ IF(NOT MSVC)
       ENDIF()
     ENDIF()
 ENDIF()
+
 
 ####### OSX BUNDLE CMAKE_INSTALL_PREFIX #######
 IF(APPLE AND BUILD_AS_BUNDLE)
@@ -909,9 +917,9 @@ ENDIF(NOT Open3D_FOUND)
 IF(NOT FastCV_FOUND)
    SET(FASTCV "//")
 ENDIF(NOT FastCV_FOUND)
-IF(NOT opengv_FOUND)
+IF(NOT opengv_FOUND OR NOT WITH_OPENGV)
    SET(OPENGV "//")
-ENDIF(NOT opengv_FOUND)
+ENDIF(NOT opengv_FOUND OR NOT WITH_OPENGV)
 IF(NOT PDAL_FOUND)
    SET(PDAL "//")
 ENDIF(NOT PDAL_FOUND)
@@ -1455,7 +1463,7 @@ ELSE()
 MESSAGE(STATUS "  With Open3D               = NO (Open3D not found)")
 ENDIF()
 
-IF(opengv_FOUND)
+IF(opengv_FOUND AND WITH_OPENGV)
 MESSAGE(STATUS "  With OpenGV ${opengv_VERSION}           = YES (License: BSD)")
 ELSEIF(NOT WITH_OPENGV)
 MESSAGE(STATUS "  With OpenGV               = NO (WITH_OPENGV=OFF)")
