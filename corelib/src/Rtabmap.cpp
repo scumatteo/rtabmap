@@ -4208,6 +4208,19 @@ bool Rtabmap::process(
 	}
 	_lastProcessTime = totalTime;
 
+	std::ofstream WMFile;
+	WMFile.open("/wsl/WM.txt", std::ios_base::app);
+	for(const auto &n : _memory->getWorkingMem())
+	{
+		WMFile << n.first << ",";
+	}
+	WMFile << "\n";
+	WMFile.close();
+
+	WMFile.open("/wsl/time.txt", std::ios_base::app);
+	WMFile << totalTime*1000 << "\n";
+	WMFile.close();
+
 	// cleanup cached gps values
 	for(std::list<int>::iterator iter=signaturesRemoved.begin(); iter!=signaturesRemoved.end() && _gpsGeocentricCache.size(); ++iter)
 	{
