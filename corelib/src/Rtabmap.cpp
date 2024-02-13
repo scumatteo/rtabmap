@@ -508,10 +508,6 @@ namespace rtabmap
 			delete _epipolarGeometry;
 			_epipolarGeometry = 0;
 		}
-		if(_memory->currentExperience().size() > 0)
-		{
-			_memory->writeExperience(_memory->getLastSignatureId());
-		}
 		if (_memory)
 		{
 			if (databaseSaved)
@@ -548,9 +544,6 @@ namespace rtabmap
 		_databasePath.clear();
 		parseParameters(Parameters::getDefaultParameters()); // reset to default parameters
 		_parameters.clear();
-
-		std::remove("/data/experience.json");
-		std::remove("/data/inference.json");
 	}
 
 	void Rtabmap::parseParameters(const ParametersMap &parameters)
@@ -2331,26 +2324,26 @@ namespace rtabmap
 				}
 			}
 
-			// TODO load by region
-			//  step 1: network prediction
-			//  step 2: load by region
-			//  step 1: for now write on file
-			if ((!signature->isBadSignature() && (signature->getWeight() >= 0) && !smallDisplacement && !tooFastMovement))
-			{
-				UTimer inferenceTimer;
-				inferenceTimer.start();
-				// if valid node do inference
-				std::string imageStr;
-				ULOGGER_DEBUG("Before imageRaw");
-				cv::Mat currentImage = signature->sensorData().imageRaw();
-				ULOGGER_DEBUG("After imageRaw");
-				if (_memory->getImageString(signature->id(), currentImage, imageStr))
-				{
-					std::string filename = "/data/inference.json";
-					_memory->writeJsonImage(signature->id(), filename, imageStr);
-				}
-				ULOGGER_DEBUG("Time for writing inference=%fs", inferenceTimer.ticks());
-			}
+			// // TODO load by region
+			// //  step 1: network prediction
+			// //  step 2: load by region
+			// //  step 1: for now write on file
+			// if ((!signature->isBadSignature() && (signature->getWeight() >= 0) && !smallDisplacement && !tooFastMovement))
+			// {
+			// 	UTimer inferenceTimer;
+			// 	inferenceTimer.start();
+			// 	// if valid node do inference
+			// 	std::string imageStr;
+			// 	ULOGGER_DEBUG("Before imageRaw");
+			// 	cv::Mat currentImage = signature->sensorData().imageRaw();
+			// 	ULOGGER_DEBUG("After imageRaw");
+			// 	if (_memory->getImageString(signature->id(), currentImage, imageStr))
+			// 	{
+			// 		std::string filename = "/data/inference.json";
+			// 		_memory->writeJsonImage(signature->id(), filename, imageStr);
+			// 	}
+			// 	ULOGGER_DEBUG("Time for writing inference=%fs", inferenceTimer.ticks());
+			// }
 
 			if (!(_memory->allNodesInWM() && maxLocalLocationsImmunized == 0))
 			{
@@ -2542,11 +2535,12 @@ namespace rtabmap
 			//============================================================
 			// RETRIEVAL: Load signatures from the database by regions
 			//============================================================
-			if (!signature->isBadSignature() && (signature->getWeight() >= 0) && !smallDisplacement && !tooFastMovement)
-			// if(signature->getWeight() >= 0)
-			{
-				_memory->reactivateTopKRegions(timeRetrievalDbAccess);
-			}
+
+			// TODO
+			//  if (!signature->isBadSignature() && (signature->getWeight() >= 0) && !smallDisplacement && !tooFastMovement)
+			//  {
+			//  	_memory->reactivateTopKRegions(timeRetrievalDbAccess);
+			//  }
 
 			timeReactivations = timer.ticks();
 			ULOGGER_INFO("timeReactivations=%fs", timeReactivations);
@@ -2978,11 +2972,15 @@ namespace rtabmap
 				info.covariance = cv::Mat::eye(6, 6, CV_64FC1);
 				if (_rgbdSlamMode)
 				{
+					std::cout << _loopClosureHypothesis.first << "\n";
+					std::cout << signature->id() << "\n";
+					std::cout << _loopClosureIdentityGuess << "\n";
 					transform = _memory->computeTransform(
 						_loopClosureHypothesis.first,
 						signature->id(),
 						_loopClosureIdentityGuess ? Transform::getIdentity() : Transform(),
 						&info);
+					std::cout << "OK1\n";
 
 					loopClosureVisualInliersMeanDist = info.inliersMeanDistance;
 					loopClosureVisualInliersDistribution = info.inliersDistribution;
@@ -4162,8 +4160,8 @@ namespace rtabmap
 		}
 
 		// create a copy of the image for save before destroying
-		//  cv::Mat currentImage = signature->sensorData().imageRaw().clone();
-		//  std::string imageFilename = "/data/images/" + std::to_string(signature->id()) + ".json";
+		cv::Mat currentImage = signature->sensorData().imageRaw().clone();
+
 		Signature lastSignatureData = *signature;
 		Transform lastSignatureLocalizedPose;
 		if (_optimizedPoses.find(signature->id()) != _optimizedPoses.end())
@@ -4237,44 +4235,17 @@ namespace rtabmap
 			{
 				UINFO("Ignoring location %d because invalid!", signature->id());
 				signaturesRemoved.push_back(signature->id());
-				// nlohmann::json imageJson;
-				// if(this->getImageJson(signature->id(), currentImage, imageJson))
-				// {
-				// 	this->writeJson(imageFilename, imageJson);
-				// }
 
-				// this->writeImageOnJson(signature);
-				// if(imageOk){
-				// 	std::string filename = "/data/example.json";
-				// 	this->writeJsonImage(signature->id(), filename, imageStr, true);
-				// }
 				_memory->addIdInExperience(signature->id(), signature->regionId());
-				// _memory->addIdInExperience(signature->id());
-				if (_memory->currentExperience().size() >= _memory->experienceSize())
-				{
-					_memory->writeExperience(signature->id());
-				}
-				// _memory->setRegionToSignature(signature->id(), _memory->currentRegionId());
+				_memory->addImageInExperience(currentImage);
+
 				_memory->deleteLocation(signature->id(), false, 0, true);
 			}
 			else
 			{
-				// nlohmann::json imageJson;
-				// if(this->getImageJson(signature->id(), currentImage, imageJson))
-				// {
-				// 	this->writeJson(imageFilename, imageJson);
-				// }
-				// this->writeImageOnJson(signature);
-				// if(imageOk){
-				// 	std::string filename = "/data/example.json";
-				// 	this->writeJsonImage(signature->id(), filename, imageStr, true);
-				// }
 				_memory->addIdInExperience(signature->id(), signature->regionId());
-				// _memory->addIdInExperience(signature->id());
-				if (_memory->currentExperience().size() >= _memory->experienceSize())
-				{
-					_memory->writeExperience(signature->id());
-				}
+				_memory->addImageInExperience(currentImage);
+
 				_memory->saveLocationData(signature->id());
 			}
 		}
@@ -4299,6 +4270,12 @@ namespace rtabmap
 			}
 		}
 
+		// START TRAINING
+		if (_memory->currentExperience().size() >= _memory->experienceSize())
+		{
+			ULOGGER_DEBUG("START TRAINING!");
+		}
+
 		ULOGGER_DEBUG("WM size before transferring: %d", _memory->getWorkingMem().size());
 
 		// Pass this point signature should not be used, since it could have been transferred...
@@ -4317,28 +4294,28 @@ namespace rtabmap
 		//============================================================
 		double totalTime = timerTotal.ticks();
 		ULOGGER_INFO("Total time processing = %fs...", totalTime);
-		// if ((_maxTimeAllowed != 0 && totalTime * 1000 > _maxTimeAllowed) ||
-		// 	(_maxMemoryAllowed != 0 && _memory->getWorkingMem().size() > _maxMemoryAllowed))
-		// {
-		// 	ULOGGER_INFO("Removing old signatures because time limit is reached %f>%f or memory is reached %d>%d...", totalTime * 1000, _maxTimeAllowed, _memory->getWorkingMem().size(), _maxMemoryAllowed);
-		// 	immunizedLocations.insert(_lastLocalizationNodeId); // keep the latest localization in working memory
-		// 	std::list<int> transferred = _memory->forget(immunizedLocations, this->_topKRegions);
-		// 	ULOGGER_DEBUG("Signatures transferred: %d", transferred.size());
-		// 	signaturesRemoved.insert(signaturesRemoved.end(), transferred.begin(), transferred.end());
-		// 	if (!_someNodesHaveBeenTransferred && transferred.size())
-		// 	{
-		// 		_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
-		// 	}
-		// }
-		ULOGGER_INFO("Removing old signatures of different regions");
-		immunizedLocations.insert(_lastLocalizationNodeId); // keep the latest localization in working memory
-		std::list<int> transferred = _memory->forget(immunizedLocations, _memory->topKRegions());
-		ULOGGER_DEBUG("Signatures transferred: %d", transferred.size());
-		signaturesRemoved.insert(signaturesRemoved.end(), transferred.begin(), transferred.end());
-		if (!_someNodesHaveBeenTransferred && transferred.size())
+		if ((_maxTimeAllowed != 0 && totalTime * 1000 > _maxTimeAllowed) ||
+			(_maxMemoryAllowed != 0 && _memory->getWorkingMem().size() > _maxMemoryAllowed))
 		{
-			_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
+			ULOGGER_INFO("Removing old signatures because time limit is reached %f>%f or memory is reached %d>%d...", totalTime * 1000, _maxTimeAllowed, _memory->getWorkingMem().size(), _maxMemoryAllowed);
+			immunizedLocations.insert(_lastLocalizationNodeId); // keep the latest localization in working memory
+			std::list<int> transferred = _memory->forget(immunizedLocations);
+			ULOGGER_DEBUG("Signatures transferred: %d", transferred.size());
+			signaturesRemoved.insert(signaturesRemoved.end(), transferred.begin(), transferred.end());
+			if (!_someNodesHaveBeenTransferred && transferred.size())
+			{
+				_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
+			}
 		}
+		// ULOGGER_INFO("Removing old signatures of different regions");
+		// immunizedLocations.insert(_lastLocalizationNodeId); // keep the latest localization in working memory
+		// std::list<int> transferred = _memory->forget(immunizedLocations, _memory->topKRegions());
+		// ULOGGER_DEBUG("Signatures transferred: %d", transferred.size());
+		// signaturesRemoved.insert(signaturesRemoved.end(), transferred.begin(), transferred.end());
+		// if (!_someNodesHaveBeenTransferred && transferred.size())
+		// {
+		// 	_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
+		// }
 
 		ULOGGER_DEBUG("WM size after transferring: %d", _memory->getWorkingMem().size());
 
@@ -7201,30 +7178,5 @@ namespace rtabmap
 			_globalScanMapPoses.clear();
 		}
 	}
-
-	
-	// void Rtabmap::writeExperience(int id) const
-	// {
-	// 	std::list<int> currentExperience = _memory->currentExperience();
-	// 	if (currentExperience.size() >= _memory->experienceSize())
-	// 	{
-	// 		nlohmann::json json;
-	// 		json["id"] = id;
-	// 		json["ids"] = currentExperience;
-
-	// 		std::string filename = "/data/experience.json";
-
-	// 		double timeElapsed = 0;
-	// 		UTimer timer;
-	// 		timer.start();
-	// 		while (!this->writeJsonLock(filename, json) && timeElapsed < 0.1)
-	// 		{
-	// 			timeElapsed = timer.getElapsedTime();
-	// 			// std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	// 		}
-	// 		_memory->resetCurrentExperience();
-	// 		ULOGGER_DEBUG("Time to write experience on file=%fs", timer.ticks());
-	// 	}
-	// }
 
 } // namespace rtabmap

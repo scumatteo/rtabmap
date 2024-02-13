@@ -154,6 +154,8 @@ protected:
 	virtual void loadSignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true, const std::set<int> &excludedIds = std::set<int>()) const;
 	virtual void loadSignaturesForRegionByIdQuery(int signatureId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const;
 	virtual void updateRegionsQuery(std::unordered_map<int, int> &signaturesMoved) const;
+	virtual void updateClusteringQuery(float totalMesh, int totalConnections, int totalRegions) const;
+	virtual void loadClusteringQuery(float &totalMesh, int &totalConnections, int &totalRegions) const;
 
 private:
 	std::string queryStepNode() const;

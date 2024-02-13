@@ -1451,4 +1451,18 @@ namespace rtabmap
 		}
 	}
 
+	void DBDriver::updateClustering(float totalMesh, int totalConnections, int totalRegions) const
+	{
+		_dbSafeAccessMutex.lock();
+		this->updateClusteringQuery(totalMesh, totalConnections, totalRegions);
+		_dbSafeAccessMutex.unlock();
+	}
+
+	void DBDriver::loadClustering(float &totalMesh, int &totalConnections, int &totalRegions) const
+	{
+		_dbSafeAccessMutex.lock();
+		this->loadClusteringQuery(totalMesh, totalConnections, totalRegions);
+		_dbSafeAccessMutex.unlock();
+	}
+
 } // namespace rtabmap

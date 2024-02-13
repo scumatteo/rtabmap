@@ -92,7 +92,7 @@ public:
 	int incrementMapId(std::map<int, int> * reducedIds = 0);
 	void updateAge(int signatureId);
 
-	std::list<int> forget(const std::set<int> & ignoredIds = std::set<int>(), const std::set<int> &topKRegions = std::set<int>());
+	std::list<int> forget(const std::set<int> & ignoredIds = std::set<int>());
 	std::set<int> reactivateSignatures(const std::list<int> & ids, unsigned int maxLoaded, double & timeDbAccess);
 	std::set<int> reactivateSignaturesByRegions(const std::list<int> &regionsIds, double &timeDbAccess, const std::set<int> &excludedIds);
 
@@ -285,6 +285,9 @@ public:
 	void addIdInExperience(int id, int regionId);
 	void updateInExperience(int id, int regionId);
 	void getIdsInRAM(std::set<int> &ids) const;
+	inline void addImageInExperience(const cv::Mat &image) { this->_experienceImages.emplace_back(image); }
+	inline const std::vector<cv::Mat> &getImagesInExperience() const { return this->_experienceImages; }
+	inline void clearImagesInExperience() { this->_experienceImages.clear(); }
 
 	void sortRegionsProbabilities(const std::vector<float> &predictions, std::vector<std::pair<float, int>> &indices) const;
 	inline int topK() const { return this->_topK; }
@@ -303,9 +306,7 @@ private:
 	void moveSignatureToWMFromSTM(int id, int * reducedTo = 0);
 	void addSignatureToWmFromLTM(Signature * signature);
 	Signature * _getSignature(int id) const;
-	std::list<Signature *> getRemovableSignatures(int count,
-			const std::set<int> & ignoredIds = std::set<int>(),
-			const std::set<int> &topKRegions = std::set<int>());
+	std::list<Signature *> getRemovableSignatures(int count, const std::set<int> & ignoredIds = std::set<int>());
 	int getNextId();
 	void initCountId();
 	void rehearsal(Signature * signature, Statistics * stats = 0);
@@ -443,6 +444,7 @@ private:
 	float _scattering1Const;
 	int _experienceSize;
 	std::unordered_map<int, int> _currentExperience;
+	std::vector<cv::Mat> _experienceImages;
 
 	int _topK;
 	std::set<int> _topKRegions;

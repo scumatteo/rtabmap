@@ -41,8 +41,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stack>
 #include <set>
 
-#include <nlohmann/json.hpp>
-
 namespace rtabmap
 {
 

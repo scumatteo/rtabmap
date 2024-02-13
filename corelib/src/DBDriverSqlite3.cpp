@@ -438,16 +438,16 @@ namespace rtabmap
 			return false;
 		}
 
-		const char* walPragma = "PRAGMA journal_mode=WAL;";
-		rc = sqlite3_exec(_ppDb, walPragma, nullptr, nullptr, nullptr);
+		// const char* walPragma = "PRAGMA journal_mode=WAL;";
+		// rc = sqlite3_exec(_ppDb, walPragma, nullptr, nullptr, nullptr);
 
-		if (rc != SQLITE_OK) {
-			ULOGGER_WARN("Failed to set WAL mode");
-			sqlite3_close(_ppDb);
-			return false;
-		}
+		// if (rc != SQLITE_OK) {
+		// 	ULOGGER_WARN("Failed to set WAL mode");
+		// 	sqlite3_close(_ppDb);
+		// 	return false;
+		// }
 
-		ULOGGER_DEBUG("WAL mode set successfully.");
+		// ULOGGER_DEBUG("WAL mode set successfully.");
 
 		// Set database optimizations
 		this->setCacheSize(_cacheSize);		// this will call the SQL
@@ -6735,7 +6735,7 @@ namespace rtabmap
 		if (_ppDb)
 		{
 			UTimer timer;
-			std::string type;
+			timer.start();
 			int rc = SQLITE_OK;
 			sqlite3_stmt *ppStmt = 0;
 			std::stringstream query;
@@ -6999,7 +6999,6 @@ namespace rtabmap
 		{
 			ULOGGER_DEBUG("DBDriverSqlite3::loadSignaturesForRegionByIdQuery signature id=%d", signatureId);
 
-			std::string type;
 			int rc = SQLITE_OK;
 			sqlite3_stmt *ppStmt = 0;
 			std::stringstream query;
@@ -7049,7 +7048,6 @@ namespace rtabmap
 			ULOGGER_DEBUG("DBDriverSqlite3::updateRegionsQuery");
 			UTimer timer;
 			timer.start();
-			std::string type;
 			int rc = SQLITE_OK;
 			sqlite3_stmt *ppStmt = 0;
 			std::stringstream query;
@@ -7107,6 +7105,83 @@ namespace rtabmap
 			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
 
 			ULOGGER_DEBUG("Time update regions of size %d=%fs", (int)signaturesMoved.size(), timer.ticks());
+		}
+	}
+
+	void DBDriverSqlite3::updateClusteringQuery(float totalMesh, int totalConnections, int totalRegions) const 
+	{
+		if (_ppDb)
+		{
+			ULOGGER_DEBUG("DBDriverSqlite3::updateClusteringQuery");
+			UTimer timer;
+			timer.start();
+			int rc = SQLITE_OK;
+			sqlite3_stmt *ppStmt = 0;
+			std::string query = "INSERT OR REPLACE INTO Clustering(id, total_mesh, total_connections, total_regions) values(?,?,?,?);";
+
+			rc = sqlite3_prepare_v2(_ppDb, query.c_str(), -1, &ppStmt, 0);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			int index = 1;
+			rc = sqlite3_bind_int(ppStmt, index++, 0);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+			rc = sqlite3_bind_double(ppStmt, index++, totalMesh);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+			rc = sqlite3_bind_int(ppStmt, index++, totalConnections);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+			rc = sqlite3_bind_int(ppStmt, index++, totalRegions);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			// step
+			rc = sqlite3_step(ppStmt);
+			UASSERT_MSG(rc == SQLITE_DONE, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			rc = sqlite3_reset(ppStmt);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			// Finalize (delete) the statement
+			rc = sqlite3_finalize(ppStmt);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			UDEBUG("Time insert clustering=%fs", timer.ticks());
+		}
+	}
+
+	void DBDriverSqlite3::loadClusteringQuery(float &totalMesh, int &totalConnections, int &totalRegions) const
+	{
+		if (_ppDb)
+		{
+			ULOGGER_DEBUG("DBDriverSqlite3::loadClusteringQuery");
+
+			int rc = SQLITE_OK;
+			sqlite3_stmt *ppStmt = 0;
+			std::string query = "SELECT total_mesh, total_connections, total_regions FROM Clustering WHERE id=?;";
+			int index = 0;
+
+			rc = sqlite3_prepare_v2(_ppDb, query.c_str(), -1, &ppStmt, 0);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			rc = sqlite3_bind_int(ppStmt, 1, 0);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			// Process the result if one
+			rc = sqlite3_step(ppStmt);
+
+			if (rc == SQLITE_ROW)
+			{
+				totalMesh = sqlite3_column_double(ppStmt, index++); // Signature Id
+				totalConnections = sqlite3_column_int(ppStmt, index++);
+				totalRegions = sqlite3_column_int(ppStmt, index++);
+				ULOGGER_DEBUG("DBDriverSqlite3::loadClusteringQuery parameters loaded");
+				rc = sqlite3_step(ppStmt);
+			}
+			else
+			{
+				ULOGGER_DEBUG("DBDriverSqlite3::loadClusteringQuery no clustering parameters in DB");
+			}
+			UASSERT_MSG(rc == SQLITE_DONE, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+			rc = sqlite3_finalize(ppStmt);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
 		}
 	}
 

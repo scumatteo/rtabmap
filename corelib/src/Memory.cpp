@@ -144,7 +144,7 @@ namespace rtabmap
 													  _clusteringThreshold(0),
 													  _defaultScattering(0),
 													  _scattering1Const(0),
-						 							  _topK(Parameters::defaultRegionTopK()),
+													  _topK(Parameters::defaultRegionTopK()),
 													  _experienceSize(Parameters::defaultContinualExperienceSize())
 	{
 		_feature2D = Feature2D::create(parameters);
@@ -520,6 +520,9 @@ namespace rtabmap
 
 		UDEBUG("ids start with %d", _idCount + 1);
 		UDEBUG("map ids start with %d", _idMapCount);
+
+		//load clustering data
+		this->_dbDriver->loadClustering(this->_totalMesh, this->_totalConnections, this->_regionCounter);
 	}
 
 	void Memory::close(bool databaseSaved, bool postInitClosingEvents, const std::string &ouputDatabasePath)
@@ -2063,7 +2066,7 @@ namespace rtabmap
 		return weights;
 	}
 
-	std::list<int> Memory::forget(const std::set<int> &ignoredIds, const std::set<int> &topKRegions)
+	std::list<int> Memory::forget(const std::set<int> &ignoredIds)
 	{
 		UDEBUG("");
 		std::list<int> signaturesRemoved;
@@ -2086,7 +2089,7 @@ namespace rtabmap
 			// dictionary to respect the limit.
 			while (wordsRemoved < newWords)
 			{
-				std::list<Signature *> signatures = this->getRemovableSignatures(1, ignoredIds, topKRegions);
+				std::list<Signature *> signatures = this->getRemovableSignatures(1, ignoredIds);
 				if (signatures.size())
 				{
 					Signature *s = dynamic_cast<Signature *>(signatures.front());
@@ -2113,7 +2116,7 @@ namespace rtabmap
 			UDEBUG("");
 			// Remove one more than total added during the iteration
 			int signaturesAdded = _signaturesAdded;
-			std::list<Signature *> signatures = getRemovableSignatures(signaturesAdded + 1, ignoredIds, topKRegions);
+			std::list<Signature *> signatures = getRemovableSignatures(signaturesAdded + 1, ignoredIds);
 			for (std::list<Signature *>::iterator iter = signatures.begin(); iter != signatures.end(); ++iter)
 			{
 				signaturesRemoved.push_back((*iter)->id());
@@ -2313,7 +2316,8 @@ namespace rtabmap
 		}
 		int weight, age, id;
 	};
-	std::list<Signature *> Memory::getRemovableSignatures(int count, const std::set<int> &ignoredIds, const std::set<int> &topKRegions)
+
+	std::list<Signature *> Memory::getRemovableSignatures(int count, const std::set<int> &ignoredIds)
 	{
 		// UDEBUG("");
 		std::list<Signature *> removableSignatures;
@@ -2404,7 +2408,7 @@ namespace rtabmap
 				 iter != weightAgeIdMap.end();
 				 ++iter)
 			{
-				if (topKRegions.find(iter->second->regionId()) == topKRegions.end() && iter->second->regionId() != this->_currentRegionId) // not signature of topk regions and not of current region
+				if (this->_topKRegions.find(iter->second->regionId()) == this->_topKRegions.end() && iter->second->regionId() != this->_currentRegionId) // not signature of topk regions and not of current region
 				{
 					if (!recentWmImmunized)
 					{
@@ -6703,38 +6707,42 @@ namespace rtabmap
 		{
 			if (this->_currentRegionId == -1) // first valid node
 			{
-				std::ifstream clusteringFile;
-				clusteringFile.open("/data/clustering.txt");
-				ULOGGER_DEBUG("Reading total mesh and total connections from file");
-				clusteringFile >> this->_totalMesh >> this->_totalConnections;
-				ULOGGER_DEBUG("Total mesh=%f - total connections=%d", this->_totalMesh, this->_totalConnections);
-				clusteringFile.close();
+				// std::ifstream clusteringFile;
+				// clusteringFile.open("/data/clustering.txt");
+				// ULOGGER_DEBUG("Reading total mesh and total connections from file");
+				// clusteringFile >> this->_totalMesh >> this->_totalConnections;
+				// ULOGGER_DEBUG("Total mesh=%f - total connections=%d", this->_totalMesh, this->_totalConnections);
+				// clusteringFile.close();
+
+				
+				ULOGGER_DEBUG("Total mesh=%f", this->_totalMesh);
+				ULOGGER_DEBUG("Total connections=%d", this->_totalConnections);
 
 				ULOGGER_DEBUG("Clustering first valid node, id=%d", this->_lastSignature->id());
-				int initialRegionId = this->loadInitialRegionId(); // load initial region id (last region id + 1)
-				this->_currentRegionId = initialRegionId;
-				this->_regionCounter = initialRegionId;
+				// int initialRegionId = this->loadInitialRegionId(); // load initial region id (last region id + 1)
+				this->_currentRegionId = this->_regionCounter;
+				// this->_regionCounter = initialRegionId;
 				if (this->_currentRegionId == 0) // first session
 				{
 					this->_lastSignature->setRegionId(this->_currentRegionId); // set signature region
 					return;
 				}
 				bool onlyLinkedWithItself = true;
-				for(const auto &l : this->_lastSignature->getLinks())
+				for (const auto &l : this->_lastSignature->getLinks())
 				{
-					if(l.second.from() != l.first) //first node only link to itself?
+					if (l.second.from() != l.first) // first node only link to itself?
 					{
 						onlyLinkedWithItself = false;
 						break;
-					} 
+					}
 				}
-				if(onlyLinkedWithItself)
+				if (onlyLinkedWithItself)
 				{
 					this->_lastSignature->setRegionId(this->_currentRegionId);
 					return;
 				}
 			}
-		
+
 			ULOGGER_DEBUG("Clustering valid node, id=%d", this->_lastSignature->id());
 			std::set<int> regionIdsConnected;
 
@@ -6773,11 +6781,6 @@ namespace rtabmap
 
 			ULOGGER_DEBUG("Total mesh=%f", this->_totalMesh);
 			ULOGGER_DEBUG("Total connections=%d", this->_totalConnections);
-
-			std::ofstream clusteringFile;
-			clusteringFile.open("/data/clustering.txt", std::ios::trunc);
-			clusteringFile << this->_totalMesh << " " << this->_totalConnections << "\n";
-			clusteringFile.close();
 
 			this->updateGlobalClusteringParams();
 
@@ -6883,6 +6886,8 @@ namespace rtabmap
 				ULOGGER_DEBUG("No candidate found. New region id=%d", this->_regionCounter);
 				this->_lastSignature->setRegionId(this->_regionCounter);
 			}
+
+			this->_dbDriver->updateClustering(this->_totalMesh, this->_totalConnections, this->_regionCounter);
 
 			std::unordered_map<int, int> signaturesMoved; // id, regionId
 			this->moveFromRegion(this->_lastSignature, signaturesMoved);
@@ -7041,45 +7046,42 @@ namespace rtabmap
 		std::sort(indices.rbegin(), indices.rend());
 	}
 
-	void Memory::reactivateTopKRegions(double & timeDbAccess)
+	void Memory::reactivateTopKRegions(double &timeDbAccess)
 	{
-		
-		ULOGGER_DEBUG("Prediction on node=%d", json["id"].get<int>());
-		predictions = json["predictions"].get<std::vector<float>>();
-		std::vector<std::pair<float, int>> indices;
-		this->sortRegionsProbabilities(predictions, indices);
-		std::list<int> regionsToRetrieve;
-		std::set<int> excludedIds;
-		this->getIdsInRAM(excludedIds);
-		this->_topKRegions.clear();
+		// UTimer timer;
+		// ULOGGER_DEBUG("Prediction on node=%d", json["id"].get<int>());
+		// predictions = json["predictions"].get<std::vector<float>>();
+		// std::vector<std::pair<float, int>> indices;
+		// this->sortRegionsProbabilities(predictions, indices);
+		// std::list<int> regionsToRetrieve;
+		// std::set<int> excludedIds;
+		// this->getIdsInRAM(excludedIds);
+		// this->_topKRegions.clear();
 
-		ULOGGER_DEBUG("Signatures already in RAM: %d", excludedIds.size());
-		for (int i = 0; i < indices.size(); i++)
-		{
-			if (i >= this->_topK)
-			{
-				break;
-			}
-			ULOGGER_DEBUG("Top %d region predicted: %d with probability %f", i + 1, indices[i].second, indices[i].first);
-			regionsToRetrieve.emplace_back(indices[i].second);
-			this->_topKRegions.insert(indices[i].second);
-		}
-		// for (int i = 0; i < this->_topK; i++)
+		// ULOGGER_DEBUG("Signatures already in RAM: %d", excludedIds.size());
+		// for (int i = 0; i < indices.size(); i++)
 		// {
-		// 	if (i < indices.size())
+		// 	if (i >= this->_topK)
 		// 	{
-		// 		ULOGGER_DEBUG("Top %d region predicted: %d with probability %f", i + 1, indices[i].second, indices[i].first);
-		// 		regionsToRetrieve.emplace_back(indices[i].second);
-		// 		this->_topKRegions.insert
+		// 		break;
 		// 	}
+		// 	ULOGGER_DEBUG("Top %d region predicted: %d with probability %f", i + 1, indices[i].second, indices[i].first);
+		// 	regionsToRetrieve.emplace_back(indices[i].second);
+		// 	this->_topKRegions.insert(indices[i].second);
 		// }
-		ULOGGER_DEBUG("Time parse and sort predictions=%fs", timer.ticks());
-		std::set<int> reactivatedRegionsIds = this->reactivateSignaturesByRegions(regionsToRetrieve, timeDbAccess, excludedIds);
-		ULOGGER_DEBUG("Time for reactivate signatures by region=%fs", timer.ticks());
-		ULOGGER_DEBUG("Reactivated signatures by region: %d", reactivatedRegionsIds.size());
-		
+		// // for (int i = 0; i < this->_topK; i++)
+		// // {
+		// // 	if (i < indices.size())
+		// // 	{
+		// // 		ULOGGER_DEBUG("Top %d region predicted: %d with probability %f", i + 1, indices[i].second, indices[i].first);
+		// // 		regionsToRetrieve.emplace_back(indices[i].second);
+		// // 		this->_topKRegions.insert
+		// // 	}
+		// // }
+		// ULOGGER_DEBUG("Time parse and sort predictions=%fs", timer.ticks());
+		// std::set<int> reactivatedRegionsIds = this->reactivateSignaturesByRegions(regionsToRetrieve, timeDbAccess, excludedIds);
+		// ULOGGER_DEBUG("Time for reactivate signatures by region=%fs", timer.ticks());
+		// ULOGGER_DEBUG("Reactivated signatures by region: %d", reactivatedRegionsIds.size());
 	}
-
-	
 
 } // namespace rtabmap
