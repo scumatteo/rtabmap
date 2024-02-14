@@ -7,7 +7,7 @@
 #include <torch/script.h>
 #include "rtabmap/core/region/models/IncrementalLinear.h"
 
-namespace region
+namespace rtabmap
 {
     // Load jit script for feature extractor
     struct ClassifierImpl : torch::nn::Cloneable<ClassifierImpl>

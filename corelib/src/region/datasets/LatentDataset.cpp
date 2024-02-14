@@ -1,6 +1,6 @@
 #include "rtabmap/core/region/datasets/LatentDataset.h"
 
-namespace region
+namespace rtabmap
 {
     LatentDataset::LatentDataset() : dataset_size_(0)
     {

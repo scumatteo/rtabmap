@@ -35,7 +35,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "rtabmap/core/SensorData.h"
 #include "rtabmap/core/Link.h"
 #include "rtabmap/core/Features2d.h"
-#include "rtabmap/core/Region.h"
 #include <typeinfo>
 #include <list>
 #include <map>
@@ -44,6 +43,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <opencv2/core/core.hpp>
 #include <opencv2/features2d/features2d.hpp>
 #include <pcl/pcl_config.h>
+
+#include <torch/torch.h>
+#include <torch/script.h>
+#include <thread>
+#include "rtabmap/core/region/clustering/Region.h"
+#include "rtabmap/core/region/models/FeatureExtractor.h"
+#include "rtabmap/core/region/models/IncrementalLinear.h"
+#include "rtabmap/core/region/models/Model.h"
 
 namespace rtabmap {
 
@@ -61,6 +68,9 @@ class Stereo;
 class OccupancyGrid;
 class MarkerDetector;
 class Region;
+class FeatureExtractor;
+class IncrementalLinear;
+class Model;
 
 class RTABMAP_CORE_EXPORT Memory
 {
@@ -284,10 +294,18 @@ public:
 	inline const std::unordered_map<int, int> &currentExperience() const { return this->_currentExperience; }
 	void addIdInExperience(int id, int regionId);
 	void updateInExperience(int id, int regionId);
+	inline void clearCurrentExperience() { this->_currentExperience.clear(); }
 	void getIdsInRAM(std::set<int> &ids) const;
-	inline void addImageInExperience(const cv::Mat &image) { this->_experienceImages.emplace_back(image); }
+	inline void addImageInExperience() { this->_experienceImages.emplace_back(this->_currentImage); }
 	inline const std::vector<cv::Mat> &getImagesInExperience() const { return this->_experienceImages; }
 	inline void clearImagesInExperience() { this->_experienceImages.clear(); }
+	inline int roiX() const { return this->_roiX; }
+	inline int roiY() const { return this->_roiY; }
+	inline int roiWidth() const { return this->_roiWidth; }
+	inline int roiHeight() const { return this->_roiHeight; }
+	void setCurrentImage();
+	inline const cv::Mat &currentImage() const { return this->_currentImage; }
+	void predict();
 
 	void sortRegionsProbabilities(const std::vector<float> &predictions, std::vector<std::pair<float, int>> &indices) const;
 	inline int topK() const { return this->_topK; }
@@ -330,7 +348,6 @@ private:
 	void updateDefaultScattering();
 	void updateClusteringThreshold();
 	void updateGlobalClusteringParams();
-	inline void setLastValidSignature() { this->_lastValidSignature = this->_lastSignature; }
 	void getSignaturesForRegion(int regionId, std::list<Signature*> &signaturesForRegion);
 	inline bool isSignatureCachedForClustering(int id) const { return this->_clusteringSignatures.count(id); }
 	void cacheSignatureForClustering(Signature* signature);
@@ -347,6 +364,9 @@ protected:
 	DBDriver * _dbDriver;
 
 private:
+	void parseRegionParameters(const ParametersMap &parameters);
+	void initRegions();
+
 	// parameters
 	ParametersMap parameters_;
 	float _similarityThreshold;
@@ -431,7 +451,6 @@ private:
 
 	//regions
 	std::unordered_map<int, Signature *> _clusteringSignatures;
-	Signature * _lastValidSignature;
 	int _currentRegionId;
 	int _regionCounter;
 	int _totalConnections;
@@ -442,12 +461,40 @@ private:
 	float _clusteringThreshold;
 	int _desiredAverageCardinality;
 	float _scattering1Const;
+
+	//continual
 	int _experienceSize;
 	std::unordered_map<int, int> _currentExperience;
 	std::vector<cv::Mat> _experienceImages;
+	std::string _modelPath;
+	int _deviceType;
+	torch::DeviceType _device;
+	double _learningRate;
+	int _epochs;
+	int _replayMemorySize;
+	int _weightingMethod;
+	double _beta;
+	int _lossFunction;
+	float _gamma;
+	int _targetWidth;
+	int _targetHeight;
+	int _batchSize;
+	int _replayMemoryBatchSize;
+	float _alpha;
+	int _roiX;
+	int _roiY;
+	int _roiWidth;
+	int _roiHeight;
+
+	std::shared_ptr<std::mutex> _trainMutex;
+	Model _model;
+	cv::Mat _currentImage;
+	
+
 
 	int _topK;
 	std::set<int> _topKRegions;
+	at::Tensor _regionProbabilities;
 };
 
 } // namespace rtabmap

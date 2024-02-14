@@ -6,7 +6,7 @@
 #include <torch/torch.h>
 #include <opencv2/opencv.hpp>
 
-namespace region
+namespace rtabmap
 {
 
     class ExperienceDataset : public torch::data::Dataset<ExperienceDataset> /* : public IdDataset */

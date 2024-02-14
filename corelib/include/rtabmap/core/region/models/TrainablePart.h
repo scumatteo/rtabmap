@@ -3,13 +3,15 @@
 #ifndef TRAINABLE_PART_H
 #define TRAINABLE_PART_H
 
+#include "rtabmap/core/rtabmap_core_export.h" // DLL export/import defines
+
 #include <torch/torch.h>
 #include <torch/script.h>
 #include "rtabmap/core/region/models/BasicBlock.h"
 
-namespace region
+namespace rtabmap
 {
-    struct TrainablePartImpl : torch::nn::Cloneable<TrainablePartImpl>
+    struct RTABMAP_CORE_EXPORT TrainablePartImpl : torch::nn::Cloneable<TrainablePartImpl>
     {
         int64_t inplanes = 64;
 

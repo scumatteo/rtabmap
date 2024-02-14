@@ -136,6 +136,14 @@ CREATE TABLE Admin (
 	time_enter DATE
 );
 
+CREATE TABLE Clustering (
+	id INTEGER NOT NULL,
+	total_mesh FLOAT,
+	total_connections INTEGER,            
+	total_regions INTEGER,	      
+	PRIMARY KEY (id)
+);
+
 -- *******************************************************************
 -- TRIGGERS
 -- *******************************************************************
@@ -175,6 +183,7 @@ CREATE INDEX IDX_GlobalDescriptor_node_id on GlobalDescriptor (node_id);
 CREATE INDEX IDX_Link_from_id on Link (from_id);
 CREATE UNIQUE INDEX IDX_node_label on Node (label);
 CREATE UNIQUE INDEX IDX_Statistics_id on Statistics (id);
+CREATE UNIQUE INDEX IDX_Clustering_id on Clustering (id);
 
 -- *******************************************************************
 -- VERSION

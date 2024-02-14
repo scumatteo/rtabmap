@@ -64,7 +64,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <rtabmap/core/MarkerDetector.h>
 #include <opencv2/imgproc/types_c.h>
 
-#include "rtabmap/core/base64.h"
+#include "rtabmap/core/region/utils.h"
 #include <iostream>
 #include <fcntl.h>
 #include <unistd.h>
@@ -134,7 +134,6 @@ namespace rtabmap
 													  _tfIdfLikelihoodUsed(Parameters::defaultKpTfIdfLikelihoodUsed()),
 													  _parallelized(Parameters::defaultKpParallelized()),
 													  _registrationVis(0),
-													  _lastValidSignature(0),
 													  _currentRegionId(-1),
 													  _totalConnections(0),
 													  _totalMesh(0),
@@ -145,7 +144,25 @@ namespace rtabmap
 													  _defaultScattering(0),
 													  _scattering1Const(0),
 													  _topK(Parameters::defaultRegionTopK()),
-													  _experienceSize(Parameters::defaultContinualExperienceSize())
+													  _modelPath(Parameters::defaultContinualModelPath()),
+													  _deviceType(Parameters::defaultContinualDevice()),
+													  _experienceSize(Parameters::defaultContinualExperienceSize()),
+													  _learningRate(Parameters::defaultContinualLearningRate()),
+													  _epochs(Parameters::defaultContinualEpochs()),
+													  _replayMemorySize(Parameters::defaultContinualReplayMemorySize()),
+													  _weightingMethod(Parameters::defaultContinualWeightingMethod()),
+													  _beta(Parameters::defaultContinualBeta()),
+													  _lossFunction(Parameters::defaultContinualLossFunction()),
+													  _gamma(Parameters::defaultContinualGamma()),
+													  _targetWidth(Parameters::defaultContinualTargetWidth()),
+													  _targetHeight(Parameters::defaultContinualTargetHeight()),
+													  _batchSize(Parameters::defaultContinualBatchSize()),
+													  _replayMemoryBatchSize(Parameters::defaultContinualReplayMemoryBatchSize()),
+													  _alpha(Parameters::defaultContinualAlpha()),
+													  _roiX(Parameters::defaultContinualRoiX()),
+													  _roiY(Parameters::defaultContinualRoiY()),
+													  _roiWidth(Parameters::defaultContinualRoiWidth()),
+													  _roiHeight(Parameters::defaultContinualRoiHeight())
 	{
 		_feature2D = Feature2D::create(parameters);
 		_vwd = new VWDictionary(parameters);
@@ -176,15 +193,7 @@ namespace rtabmap
 		_occupancy = new OccupancyGrid(parameters);
 		_markerDetector = new MarkerDetector(parameters);
 		this->parseParameters(parameters);
-
-		// regions params
-		Parameters::parse(parameters, Parameters::kRegionRadiusUpperBound(), _radiusUpperBound);
-		Parameters::parse(parameters, Parameters::kRegionDesiredAverageCardinality(), _desiredAverageCardinality);
-		Parameters::parse(parameters, Parameters::kRegionMeshShapeFactor(), _meshShapeFactor);
-		_scattering1Const = _desiredAverageCardinality * sqrt(_desiredAverageCardinality);
-
-		Parameters::parse(parameters, Parameters::kRegionTopK(), _topK);
-		Parameters::parse(parameters, Parameters::kContinualExperienceSize(), _experienceSize);
+		this->parseRegionParameters(parameters);
 	}
 
 	bool Memory::init(const std::string &dbUrl, bool dbOverwritten, const ParametersMap &parameters, bool postInitClosingEvents)
@@ -254,7 +263,6 @@ namespace rtabmap
 		}
 
 		loadDataFromDb(postInitClosingEvents);
-		std::cout << "R4\n";
 
 		if (postInitClosingEvents)
 			UEventsManager::post(new RtabmapEventInit(RtabmapEventInit::kInitialized));
@@ -523,6 +531,8 @@ namespace rtabmap
 
 		//load clustering data
 		this->_dbDriver->loadClustering(this->_totalMesh, this->_totalConnections, this->_regionCounter);
+		std::cout << "HERE\n";
+		this->initRegions();
 	}
 
 	void Memory::close(bool databaseSaved, bool postInitClosingEvents, const std::string &ouputDatabasePath)
@@ -6707,21 +6717,12 @@ namespace rtabmap
 		{
 			if (this->_currentRegionId == -1) // first valid node
 			{
-				// std::ifstream clusteringFile;
-				// clusteringFile.open("/data/clustering.txt");
-				// ULOGGER_DEBUG("Reading total mesh and total connections from file");
-				// clusteringFile >> this->_totalMesh >> this->_totalConnections;
-				// ULOGGER_DEBUG("Total mesh=%f - total connections=%d", this->_totalMesh, this->_totalConnections);
-				// clusteringFile.close();
-
-				
+			
 				ULOGGER_DEBUG("Total mesh=%f", this->_totalMesh);
 				ULOGGER_DEBUG("Total connections=%d", this->_totalConnections);
 
 				ULOGGER_DEBUG("Clustering first valid node, id=%d", this->_lastSignature->id());
-				// int initialRegionId = this->loadInitialRegionId(); // load initial region id (last region id + 1)
 				this->_currentRegionId = this->_regionCounter;
-				// this->_regionCounter = initialRegionId;
 				if (this->_currentRegionId == 0) // first session
 				{
 					this->_lastSignature->setRegionId(this->_currentRegionId); // set signature region
@@ -7024,6 +7025,64 @@ namespace rtabmap
 		return std::set<int>(idsLoaded.begin(), idsLoaded.end());
 	}
 
+	void Memory::parseRegionParameters(const ParametersMap &parameters)
+	{
+		// regions params
+		Parameters::parse(parameters, Parameters::kRegionRadiusUpperBound(), _radiusUpperBound);
+		Parameters::parse(parameters, Parameters::kRegionDesiredAverageCardinality(), _desiredAverageCardinality);
+		Parameters::parse(parameters, Parameters::kRegionMeshShapeFactor(), _meshShapeFactor);
+		_scattering1Const = _desiredAverageCardinality * sqrt(_desiredAverageCardinality);
+
+		Parameters::parse(parameters, Parameters::kRegionTopK(), _topK);
+		
+		Parameters::parse(parameters, Parameters::kContinualModelPath(), _modelPath);
+		Parameters::parse(parameters, Parameters::kContinualDevice(), _deviceType);
+		Parameters::parse(parameters, Parameters::kContinualExperienceSize(), _experienceSize);
+		Parameters::parse(parameters, Parameters::kContinualLearningRate(), _learningRate);
+		Parameters::parse(parameters, Parameters::kContinualEpochs(), _epochs);
+		Parameters::parse(parameters, Parameters::kContinualReplayMemorySize(), _replayMemorySize);
+		Parameters::parse(parameters, Parameters::kContinualWeightingMethod(), _weightingMethod);
+		Parameters::parse(parameters, Parameters::kContinualBeta(), _beta);
+		Parameters::parse(parameters, Parameters::kContinualLossFunction(), _lossFunction);
+		Parameters::parse(parameters, Parameters::kContinualGamma(), _gamma);
+		Parameters::parse(parameters, Parameters::kContinualTargetWidth(), _targetWidth);
+		Parameters::parse(parameters, Parameters::kContinualTargetHeight(), _targetHeight);
+		Parameters::parse(parameters, Parameters::kContinualBatchSize(), _batchSize);
+		Parameters::parse(parameters, Parameters::kContinualReplayMemoryBatchSize(), _replayMemoryBatchSize);
+		Parameters::parse(parameters, Parameters::kContinualAlpha(), _alpha);
+		Parameters::parse(parameters, Parameters::kContinualRoiX(), _roiX);
+		Parameters::parse(parameters, Parameters::kContinualRoiY(), _roiY);
+		Parameters::parse(parameters, Parameters::kContinualRoiWidth(), _roiWidth);
+		Parameters::parse(parameters, Parameters::kContinualRoiHeight(), _roiHeight);
+	}
+
+	void Memory::initRegions() 
+	{
+		_device = _deviceType && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+		_trainMutex = std::make_shared<std::mutex>();
+		FeatureExtractor featureExtractor;
+		IncrementalLinear classifier(512, 5); //this->_regionCounter > 0 ? this->_regionCounter - 1 : this->_regionCounter);
+		_model = Model(featureExtractor, classifier, _modelPath);
+		_model->set_freezed_part();
+		for (const auto &p : _model->feature_extractor->freezed_part->named_parameters())
+        {
+            std::cout << p.value().requires_grad() << "\n";
+        }
+		// _model->eval();
+		// _model->to(this->_device);		
+		Model new_model = std::dynamic_pointer_cast<ModelImpl>(_model->clone());
+		for (const auto &p : new_model->feature_extractor->freezed_part->named_parameters())
+        {
+            std::cout << p.value().requires_grad() << "\n";
+        }
+		new_model->set_freezed_part();
+		for (const auto &p : new_model->feature_extractor->freezed_part->named_parameters())
+        {
+            std::cout << p.value().requires_grad() << "\n";
+        }
+
+	}
+
 	void Memory::getIdsInRAM(std::set<int> &ids) const
 	{
 		for (const auto &id : this->_stMem)
@@ -7044,6 +7103,49 @@ namespace rtabmap
 		}
 
 		std::sort(indices.rbegin(), indices.rend());
+	}
+
+	void Memory::setCurrentImage()
+	{
+		this->_currentImage = this->_lastSignature->sensorData().imageRaw().clone();
+		if(this->_roiWidth != 0 && this->_roiHeight != 0)
+		{
+			cv::Rect roi(this->_roiX, this->_roiY, this->_roiWidth, this->_roiHeight);
+			this->_currentImage = this->_currentImage(roi);
+		}
+		ULOGGER_DEBUG("Cropped image size: %d %d", this->_currentImage.cols, this->_currentImage.rows);
+	}
+
+	void Memory::predict()
+	{
+		ULOGGER_DEBUG("Model trained: %s", this->_model->is_trained() ? "true" : "false");
+		// if(this->_model->is_trained()) //always called when output size is at least 1
+		{
+			torch::NoGradGuard no_grad;
+			at::Tensor input = image_to_tensor(this->_currentImage, this->_targetWidth, this->_targetHeight);
+			input = input.to(this->_device);
+			at::Tensor output = this->_model->forward(input);
+			output = output.detach().cpu();
+			
+			if(output.sizes()[0] == this->_regionProbabilities.sizes()[0])
+			{
+				output = this->_alpha * output + (1.0 - this->_alpha) * this->_regionProbabilities;
+			}
+			else //new neurons, output.sizes()[0] > _regionProbabilities.sizes()[0]
+			{
+				output.slice(0, this->_regionProbabilities.sizes()[0]) = this->_alpha * output.slice(0, this->_regionProbabilities.sizes()[0]) + (1.0 - this->_alpha) * this->_regionProbabilities;
+			}
+			this->_regionProbabilities = output;
+
+			std::tuple<at::Tensor, at::Tensor> sortedProbabilites = at::sort(this->_regionProbabilities, c10::optional<bool>(false), -1, true);
+
+			at::Tensor sortedRegionsTensor = std::get<1>(sortedProbabilites).slice(0, this->_topK + 1);
+			std::vector<int> sortedRegions(sortedRegionsTensor.data_ptr<int64_t>(), sortedRegionsTensor.data_ptr<int64_t>() + sortedRegionsTensor.numel());
+			this->_topKRegions = std::set<int>(sortedRegions.begin(), sortedRegions.end());
+			std::cout << this->_topKRegions.size() << "\n";
+
+		}
+		
 	}
 
 	void Memory::reactivateTopKRegions(double &timeDbAccess)

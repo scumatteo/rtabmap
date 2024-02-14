@@ -6,7 +6,7 @@
 #include <torch/torch.h>
 #include <opencv2/opencv.hpp>
 
-namespace region_learner
+namespace rtabmap_learner
 {
 
     struct FocalLossImpl : torch::nn::CrossEntropyLossImpl

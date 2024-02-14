@@ -1,4 +1,4 @@
-#include "rtabmap/core/Region.h"
+#include "rtabmap/core/region/clustering/Region.h"
 #include "rtabmap/core/Signature.h"
 #include <pcl/search/kdtree.h>
 #include <rtabmap/utilite/ULogger.h>

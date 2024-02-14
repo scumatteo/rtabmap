@@ -7,7 +7,7 @@
 #include <torch/torch.h>
 #include <opencv2/opencv.hpp>
 
-namespace region
+namespace rtabmap
 {
 
     torch::Tensor image_to_tensor(const cv::Mat &image, const int64_t &image_width, const int64_t &image_height);

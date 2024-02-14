@@ -3,9 +3,9 @@
 #ifndef BASE_BUFFER_H
 #define BASE_BUFFER_H
 
-#include "libtorch_porting/region_learner/datasets/latent_dataset.hpp"
+#include "libtorch_porting/region/datasets/latent_dataset.hpp"
 
-namespace region_learner
+namespace rtabmap
 {
 
     class BaseBuffer

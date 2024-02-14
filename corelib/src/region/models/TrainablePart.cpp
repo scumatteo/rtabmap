@@ -1,6 +1,6 @@
 #include "rtabmap/core/region/models/TrainablePart.h"
 
-namespace region
+namespace rtabmap
 {
     TrainablePartImpl::TrainablePartImpl() : layer4(make_layer(512, 64, 1, 2)),
                                              avgpool(torch::nn::AdaptiveAvgPool2dOptions({1, 1}))
@@ -11,12 +11,14 @@ namespace region
 
     torch::Tensor TrainablePartImpl::forward(const torch::Tensor &input)
     {
-        return torch::zeros({1}); //->model_.forward(input).toTensor();
+        torch::Tensor x = this->layer4->forward(input);
+        x = this->avgpool->forward(x);
+        return x;
     }
 
     void TrainablePartImpl::reset()
     {
-        this->rebuild_all_();
+        // this->rebuild_all_();
         this->register_all_();
     }
 

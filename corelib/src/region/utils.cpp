@@ -1,13 +1,13 @@
 #include "rtabmap/core/region/utils.h"
+#include <opencv4/opencv2/opencv.hpp>
 
-namespace region
+namespace rtabmap
 {
 
     torch::Tensor image_to_tensor(const cv::Mat &image, const int64_t &image_width, const int64_t &image_height)
     {
         cv::Mat img;
-        cv::cvtColor(image, img, cv::COLOR_BGR2RGB); //TODO check
-        cv::resize(img, img, cv::Size(image_width, image_height));
+        cv::resize(image, img, cv::Size(image_width, image_height));
         img.convertTo(img, CV_32FC3, 1 / 255.0);
         torch::Tensor tensor = torch::from_blob(img.data, {1, img.rows, img.cols, img.channels()}, c10::kFloat);
         tensor = tensor.permute({0, 3, 1, 2});

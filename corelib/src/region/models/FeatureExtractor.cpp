@@ -1,36 +1,46 @@
 #include "rtabmap/core/region/models/FeatureExtractor.h"
+#include "rtabmap/utilite/ULogger.h"
 
-namespace region
+namespace rtabmap
 {
-    FeatureExtractorImpl::FeatureExtractorImpl(const std::string &model_path) : model_path(model_path)
+    // FeatureExtractorImpl::FeatureExtractorImpl(const std::string &model_path) : model_path(model_path)
 
+    // {
+    //     if (!model_path.empty())
+    //     {
+    //         try
+    //         {
+    //             std::ifstream file(model_path, std::ios::binary);
+    //             std::vector<char> data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    //             file.close();
+    //             torch::IValue ivalue = torch::pickle_load(data);
+    //             auto dict = ivalue.toGenericDict();
+
+    //             for (const auto &p : this->freezed_part->named_parameters())
+    //             {
+    //                 p.value().set_data(dict.at(p.key()).toTensor());
+    //                 p.value().requires_grad_(false);
+    //             }
+    //             this->freezed_part->eval();
+
+    //             for (const auto &p : this->trainable_part->named_parameters())
+    //             {
+    //                 p.value().set_data(dict.at(p.key()).toTensor());
+    //             }                
+    //         }
+    //         catch (const c10::Error &e)
+    //         {
+    //             ULOGGER_DEBUG("Error loading the state_dict: %s\n", e.what());
+    //             std::cerr << e.what() << "\n";
+    //             std::cerr << "Error loading the state_dict\n";
+    //         }
+    //     }
+    //     this->register_all_();
+    // }
+
+    FeatureExtractorImpl::FeatureExtractorImpl() 
     {
-        try
-        {
-            std::ifstream file(model_path, std::ios::binary);
-            std::vector<char> data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-            torch::IValue ivalue = torch::pickle_load(data);
-            auto dict = ivalue.toGenericDict();
-            
-            for (const auto &p : this->freezed_part->named_parameters())
-            {
-                p.value().set_data(dict.at(p.key()).toTensor());
-                p.value().requires_grad_(false);
-            }
-            this->freezed_part->eval();
-
-            for (const auto &p : this->trainable_part->named_parameters())
-            {
-                p.value().set_data(dict.at(p.key()).toTensor());
-            }
-
-            this->register_all_();
-        }
-        catch (const c10::Error &e)
-        {
-            std::cerr << e.what() << "\n";
-            std::cerr << "Error loading the state_dict\n";
-        }
+        this->register_all_();
     }
 
     torch::Tensor FeatureExtractorImpl::extract_freezed_features(const torch::Tensor &input)
@@ -43,7 +53,9 @@ namespace region
 
     torch::Tensor FeatureExtractorImpl::extract_features(const torch::Tensor &input)
     {
-        return this->trainable_part->forward(input);
+        torch::Tensor x = this->trainable_part->forward(input);
+        x = torch::flatten(x);
+        return x;
     }
 
     void FeatureExtractorImpl::train(bool on)
@@ -54,7 +66,7 @@ namespace region
 
     void FeatureExtractorImpl::reset()
     {
-        this->rebuild_all_();
+        // this->rebuild_all_();
         this->register_all_();
     }
 

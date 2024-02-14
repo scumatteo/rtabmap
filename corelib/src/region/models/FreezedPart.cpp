@@ -1,6 +1,6 @@
 #include "rtabmap/core/region/models/FreezedPart.h"
 
-namespace region
+namespace rtabmap
 {
     FreezedPartImpl::FreezedPartImpl() : conv1(conv_options(3, 64, 7, 2, 3)),
                                          bn1(64),
@@ -12,17 +12,41 @@ namespace region
 
     {
         this->register_all_();
+
+        // std::cout << "CONSTRUCTOR\n";
+        // for (const auto &p : this->named_parameters())
+        // {
+        //     std::cout << p.key() << "\n";
+        //     p.value().requires_grad_(false);
+        // }
     }
 
     torch::Tensor FreezedPartImpl::forward(const torch::Tensor &input)
     {
-        return torch::zeros({1}); //->model_.forward(input).toTensor();
+        torch::Tensor x = this->conv1->forward(input);
+        x = this->bn1->forward(x);
+        x = this->relu->forward(x);
+        x = this->maxpool->forward(x);
+        x = this->layer1->forward(x);
+        x = this->layer2->forward(x);
+        x = this->layer3->forward(x);
+        return x;
+
     }
 
     void FreezedPartImpl::reset()
     {
-        this->rebuild_all_();
+        // this->rebuild_all_();
         this->register_all_();
+
+        // std::cout << "RESET\n";
+
+        // for (const auto &p : this->named_parameters())
+        // {
+        //     std::cout << p.key() << "\n";
+        //     // p.value().set_requires_grad(false);
+        //     p.value().requires_grad_(false);
+        // }
     }
 
     void FreezedPartImpl::rebuild_all_()

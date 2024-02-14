@@ -1,12 +1,19 @@
 #include "rtabmap/core/region/models/IncrementalLinear.h"
 
-namespace region
+namespace rtabmap
 {
     IncrementalLinearImpl::IncrementalLinearImpl(size_t in_features,
                                                  size_t initial_out_features) : linear(torch::nn::Linear(in_features, initial_out_features))
     {
         this->register_all_();
     }
+
+    // IncrementalLinearImpl::IncrementalLinearImpl(const std::string &model_path, 
+    //                                              size_t initial_out_features) : model_path(model_path),
+    //                                                                             linear(torch::nn::Linear(512, initial_out_features))
+    // {
+    //     this->register_all_();
+    // }
 
     torch::Tensor IncrementalLinearImpl::forward(const torch::Tensor &input)
     {
@@ -48,7 +55,7 @@ namespace region
     void IncrementalLinearImpl::reset()
     {
 
-        this->rebuild_all_();
+        // this->rebuild_all_();
         this->register_all_();
     }
 

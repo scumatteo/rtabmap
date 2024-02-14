@@ -45,7 +45,6 @@ SET(SRC_FILES
     VWDictionary.cpp
     BayesFilter.cpp
     Parameters.cpp
-	Region.cpp
     Signature.cpp
     Features2d.cpp
     Transform.cpp
@@ -128,6 +127,15 @@ SET(SRC_FILES
     opencv/ORBextractor.cc
     opencv/solvepnp.cpp
     opencv/five-point.cpp
+
+	#regions
+	region/clustering/Region.cpp
+	# region/models/BasicBlock.cpp
+	# region/models/FeatureExtractor.cpp
+	# region/models/FreezedPart.cpp
+	# region/models/IncrementalLinear.cpp
+	# region/models/Model.cpp
+	# region/models/TrainablePart.cpp
 )
 
 IF(OpenCV_VERSION_MAJOR EQUAL 2)
@@ -192,18 +200,26 @@ ELSE()
 ENDIF()
 
 IF(TORCH_FOUND)
-	SET(LIBRARIES
-		${LIBRARIES}
+	SET(PUBLIC_LIBRARIES
+		${PUBLIC_LIBRARIES}
 		${TORCH_LIBRARIES}
 	)
 	SET(SRC_FILES
 		${SRC_FILES}
 		superpoint_torch/SuperPoint.cc
+		region/models/BasicBlock.cpp
+		region/models/FeatureExtractor.cpp
+		region/models/FreezedPart.cpp
+		region/models/IncrementalLinear.cpp
+		region/models/Model.cpp
+		region/models/TrainablePart.cpp
+		region/utils.cpp
 	)
-	 SET(INCLUDE_DIRS
+	 SET(PUBLIC_INCLUDE_DIRS
 	    ${TORCH_INCLUDE_DIRS}
 	    ${CMAKE_CURRENT_SOURCE_DIR}/superpoint_torch
-		${INCLUDE_DIRS}
+		${CMAKE_CURRENT_SOURCE_DIR}/region/models
+		${PUBLIC_INCLUDE_DIRS}
 	)
 ENDIF(TORCH_FOUND)
 

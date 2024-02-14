@@ -1,7 +1,7 @@
 #include "rtabmap/core/region/models/Classifier.h"
 #include "rtabmap/core/region/models/IncrementalLinear.h"
 
-namespace region
+namespace rtabmap
 {
 
     ClassifierImpl::ClassifierImpl(const std::vector<size_t> &layer_dims,

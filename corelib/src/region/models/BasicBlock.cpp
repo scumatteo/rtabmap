@@ -1,7 +1,7 @@
 #include <torch/torch.h>
 #include "rtabmap/core/region/models/BasicBlock.h"
 
-namespace region
+namespace rtabmap
 {
 
         torch::nn::Conv2dOptions conv_options(int64_t in_planes, int64_t out_planes, int64_t kerner_size,
@@ -48,7 +48,7 @@ namespace region
 
     void BasicBlock::reset()
     {
-        this->rebuild_all_();
+        // this->rebuild_all_();
         this->register_all_();
     }
 

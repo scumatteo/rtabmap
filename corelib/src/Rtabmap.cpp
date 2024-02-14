@@ -2277,6 +2277,28 @@ namespace rtabmap
 			}
 		}
 
+		
+		// Continual set current image for NN
+		_memory->setCurrentImage();
+
+		
+		// create a copy of the image for save before destroying
+		// cv::Mat currentImage = signature->sensorData().imageRaw().clone();
+		// ULOGGER_DEBUG("Image size: %d %d", currentImage.cols, currentImage.rows);
+		// cv::Mat croppedImage;
+
+		// if(_memory->roiWidth() != 0 && _memory->roiHeight() != 0)
+		// {
+		// 	cv::Rect roi(_memory->roiX(), _memory->roiY(), _memory->roiWidth(), _memory->roiHeight());
+		// 	croppedImage = currentImage(roi);
+		// }
+		// else 
+		// {
+		// 	croppedImage = currentImage;
+		// }
+		// ULOGGER_DEBUG("Cropped image size: %d %d", croppedImage.cols, croppedImage.rows);
+		
+			
 		//============================================================
 		// RETRIEVAL 2/3 : Update planned path and get next nodes to retrieve
 		//============================================================
@@ -2323,27 +2345,6 @@ namespace rtabmap
 					}
 				}
 			}
-
-			// // TODO load by region
-			// //  step 1: network prediction
-			// //  step 2: load by region
-			// //  step 1: for now write on file
-			// if ((!signature->isBadSignature() && (signature->getWeight() >= 0) && !smallDisplacement && !tooFastMovement))
-			// {
-			// 	UTimer inferenceTimer;
-			// 	inferenceTimer.start();
-			// 	// if valid node do inference
-			// 	std::string imageStr;
-			// 	ULOGGER_DEBUG("Before imageRaw");
-			// 	cv::Mat currentImage = signature->sensorData().imageRaw();
-			// 	ULOGGER_DEBUG("After imageRaw");
-			// 	if (_memory->getImageString(signature->id(), currentImage, imageStr))
-			// 	{
-			// 		std::string filename = "/data/inference.json";
-			// 		_memory->writeJsonImage(signature->id(), filename, imageStr);
-			// 	}
-			// 	ULOGGER_DEBUG("Time for writing inference=%fs", inferenceTimer.ticks());
-			// }
 
 			if (!(_memory->allNodesInWM() && maxLocalLocationsImmunized == 0))
 			{
@@ -2537,10 +2538,11 @@ namespace rtabmap
 			//============================================================
 
 			// TODO
-			//  if (!signature->isBadSignature() && (signature->getWeight() >= 0) && !smallDisplacement && !tooFastMovement)
-			//  {
-			//  	_memory->reactivateTopKRegions(timeRetrievalDbAccess);
-			//  }
+			if (!signature->isBadSignature() && (signature->getWeight() >= 0) && !smallDisplacement && !tooFastMovement)
+			{
+				_memory->predict();
+			// _memory->reactivateTopKRegions(timeRetrievalDbAccess);
+			}
 
 			timeReactivations = timer.ticks();
 			ULOGGER_INFO("timeReactivations=%fs", timeReactivations);
@@ -4159,9 +4161,6 @@ namespace rtabmap
 			ULOGGER_INFO("Time creating stats = %f...", timeStatsCreation);
 		}
 
-		// create a copy of the image for save before destroying
-		cv::Mat currentImage = signature->sensorData().imageRaw().clone();
-
 		Signature lastSignatureData = *signature;
 		Transform lastSignatureLocalizedPose;
 		if (_optimizedPoses.find(signature->id()) != _optimizedPoses.end())
@@ -4237,14 +4236,14 @@ namespace rtabmap
 				signaturesRemoved.push_back(signature->id());
 
 				_memory->addIdInExperience(signature->id(), signature->regionId());
-				_memory->addImageInExperience(currentImage);
+				_memory->addImageInExperience();
 
 				_memory->deleteLocation(signature->id(), false, 0, true);
 			}
 			else
 			{
 				_memory->addIdInExperience(signature->id(), signature->regionId());
-				_memory->addImageInExperience(currentImage);
+				_memory->addImageInExperience();
 
 				_memory->saveLocationData(signature->id());
 			}
@@ -4274,6 +4273,9 @@ namespace rtabmap
 		if (_memory->currentExperience().size() >= _memory->experienceSize())
 		{
 			ULOGGER_DEBUG("START TRAINING!");
+
+			this->_memory->clearCurrentExperience();
+			this->_memory->clearImagesInExperience();
 		}
 
 		ULOGGER_DEBUG("WM size before transferring: %d", _memory->getWorkingMem().size());

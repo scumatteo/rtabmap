@@ -1,7 +1,7 @@
 #include "rtabmap/core/region/datasets/ExperienceDataset.h"
 #include "rtabmap/core/region/utils.h"
 
-namespace region
+namespace rtabmap
 {
 
     ExperienceDataset::ExperienceDataset(const std::vector<size_t> &ids,
