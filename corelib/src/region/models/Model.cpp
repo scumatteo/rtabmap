@@ -1,24 +1,11 @@
 #include "rtabmap/core/region/models/Model.h"
 #include "rtabmap/utilite/ULogger.h"
+#include "rtabmap/core/region/utils.h"
 
 namespace rtabmap
 {
-    ModelImpl::ModelImpl() : feature_extractor(nullptr),
-                             classifier(nullptr)
-    {
-    }
 
-    ModelImpl::ModelImpl(const FeatureExtractor &feature_extractor,
-                         const IncrementalLinear &classifier) : feature_extractor(feature_extractor),
-                                                                classifier(classifier)
-    {
-        for (const auto &p : this->feature_extractor->named_parameters())
-        {
-            std::cout << p.key() << "\n";
-        }
-
-        this->register_all_();
-    }
+    ModelImpl::ModelImpl() : feature_extractor(FeatureExtractor()), classifier(IncrementalLinear()) {}
 
     ModelImpl::ModelImpl(const FeatureExtractor &feature_extractor,
                          const IncrementalLinear &classifier,
@@ -26,86 +13,24 @@ namespace rtabmap
                                                           classifier(classifier)
     {
 
-        this->register_all_();
+        register_module("feature_extractor", this->feature_extractor);
+        register_module("classifier", this->classifier);
 
+        // load the state dict
         if (!model_path.empty())
         {
-            try
-            {
-                std::ifstream file(model_path, std::ios::binary);
-                std::vector<char> data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-                file.close();
-                torch::IValue ivalue = torch::pickle_load(data);
-                auto dict = ivalue.toGenericDict();
-
-                for (const auto &p : this->named_buffers())
-                {
-                    // std::cout << p.key() << "\n";
-                    if (dict.contains(p.key()))
-                    {
-                        p.value().set_data(dict.at(p.key()).toTensor());
-                    }
-                }
-
-                for (const auto &p : this->named_parameters())
-                {
-                    // std::cout << p.key() << "\n";
-                    if (dict.contains(p.key()))
-                    {
-                        p.value().set_data(dict.at(p.key()).toTensor());
-                    }
-                }
-
-                // this->feature_extractor->freezed_part->eval();
-
-                // for (const auto &p : this->feature_extractor->trainable_part->named_parameters())
-                // {
-                //     std::cout << p.key() << "\n";
-                //     if(dict.contains(p.key())){
-                //         p.value().set_data(dict.at(p.key()).toTensor());
-                //     }                }
-
-                // for (const auto &p : this->classifier->linear->named_parameters())
-                // {
-                //     std::cout << p.key() << "\n";
-                //     if(dict.contains(p.key())){
-                //         p.value().set_data(dict.at(p.key()).toTensor());
-                //     }
-
-                // }
-            }
-
-            catch (const c10::Error &e)
-            {
-                ULOGGER_DEBUG("Error loading the state_dict: %s\n", e.what());
-                std::cerr << e.what() << "\n";
-                std::cerr << "Error loading the state_dict\n";
-            }
+            this->load_state_dict(model_path);
         }
-        // this->register_all_();
+
+        // set freezed part
+        this->set_freezed_part();
     }
-
-    void ModelImpl::set_freezed_part()
-    {
-        for (const auto &p : this->feature_extractor->freezed_part->named_parameters())
-        {
-            std::cout << p.key() << "\n";
-            p.value().requires_grad_(false);
-        }
-        this->feature_extractor->freezed_part->eval();
-    }
-
-    // ModelImpl::ModelImpl(const std::string &model_path,
-    //                      size_t initial_out_features) : feature_extractor(FeatureExtractor(model_path)),
-
-    // {
-    //     this->register_all_();
-    // }
 
     torch::Tensor ModelImpl::forward(const torch::Tensor &input)
     {
+        // To use only in inference
         torch::Tensor x = this->feature_extractor->extract_freezed_features(input);
-        x = this->feature_extractor->extract_features(x);
+        x = this->feature_extractor->extract_trainable_features(x);
         x = this->classifier->forward(x);
         return x;
     }
@@ -115,22 +40,118 @@ namespace rtabmap
         this->classifier->adapt(classes_in_this_experience);
     }
 
-    void ModelImpl::reset()
+    void ModelImpl::set_freezed_part()
     {
-        // this->rebuild_all_();
-        this->register_all_();
+        for (const auto &p : this->feature_extractor->freezed_part->named_parameters())
+        {
+            p.value().requires_grad_(false);
+        }
+        this->feature_extractor->freezed_part->eval();
     }
 
-    void ModelImpl::rebuild_all_()
+    // create a deep clone of the model
+    std::shared_ptr<ModelImpl> ModelImpl::clone()
     {
-        this->feature_extractor = std::dynamic_pointer_cast<FeatureExtractorImpl>(this->feature_extractor->clone());
-        this->classifier = std::dynamic_pointer_cast<IncrementalLinearImpl>(this->classifier->clone());
+        auto clone = std::make_shared<ModelImpl>(FeatureExtractor(),
+                                                 IncrementalLinear(this->classifier->linear->options.in_features(),
+                                                                   this->classifier->linear->options.out_features()));
+
+        std::string data;
+        {
+            std::ostringstream oss;
+            torch::serialize::OutputArchive archive;
+            this->save(archive);
+            archive.save_to(oss);
+            data = oss.str();
+        }
+
+        {
+            std::istringstream iss(data);
+            torch::serialize::InputArchive archive;
+            archive.load_from(iss);
+            clone->load(archive);
+        }
+
+        return clone;
     }
 
-    void ModelImpl::register_all_()
+    // load the state dict
+    void ModelImpl::load_state_dict(const std::string &model_path)
     {
-        register_module("feature_extractor", this->feature_extractor);
-        register_module("classifier", this->classifier);
+        try
+        {
+            std::ifstream file(model_path, std::ios::binary);
+            std::vector<char> data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            file.close();
+            torch::IValue ivalue = torch::pickle_load(data);
+            auto dict = ivalue.toGenericDict();
+
+            // for (const auto &e : dict)
+            // {
+            //     std::string key = e.key().toString().get()->string();
+            //     if (this->named_buffers().contains(key))
+            //     {
+            //         this->named_buffers().update(key, e.value().toTensor());
+            //     }
+            //     else if (this->named_parameters().contains(key))
+            //     {
+            //         this->named_parameters().update(key, e.value().toTensor());
+            //     }
+            // }
+
+            for (const auto &p : this->named_buffers())
+            {
+                if (dict.contains(p.key()))
+                {
+                    p.value().set_data(dict.at(p.key()).toTensor());
+                }
+            }
+
+            for (const auto &p : this->named_parameters())
+            {
+                if (dict.contains(p.key()))
+                {
+                    p.value().set_data(dict.at(p.key()).toTensor());
+                }
+            }
+        }
+
+        catch (const c10::Error &e)
+        {
+            std::cerr << e.what() << "\n";
+            std::cerr << "Error loading the state_dict\n";
+        }
+    }
+
+    // save the state dict
+    void ModelImpl::save_state_dict(const std::string &model_path)
+    {
+        try
+        {
+            torch::Dict<std::string, torch::Tensor> dict;
+
+            for (const auto &p : this->named_buffers())
+            {
+                dict.insert(p.key(), p.value());
+            }
+
+            for (const auto &p : this->named_parameters())
+            {
+                dict.insert(p.key(), p.value());
+            }
+
+            // save_tensor_serialized(model_path, dict);
+
+            std::vector<char> state_dict = torch::pickle_save(dict);
+            std::ofstream file(model_path, std::fstream::out | std::ios::binary);
+            file.write(state_dict.data(), state_dict.size());
+            file.close();
+        }
+        catch (const c10::Error &e)
+        {
+            std::cerr << e.what() << "\n";
+            std::cerr << "Error saving the state_dict\n";
+        }
     }
 
 }

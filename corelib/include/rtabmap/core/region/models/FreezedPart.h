@@ -11,7 +11,7 @@
 
 namespace rtabmap
 {
-    struct RTABMAP_CORE_EXPORT FreezedPartImpl : torch::nn::Cloneable<FreezedPartImpl>
+    struct RTABMAP_CORE_EXPORT FreezedPartImpl : torch::nn::Module
     {
         int64_t inplanes = 64;
 
@@ -26,11 +26,6 @@ namespace rtabmap
         FreezedPartImpl();
 
         torch::Tensor forward(const torch::Tensor &input);
-        void reset() override;
-
-    private:
-        void rebuild_all_();
-        void register_all_();
     };
 
     TORCH_MODULE(FreezedPart);

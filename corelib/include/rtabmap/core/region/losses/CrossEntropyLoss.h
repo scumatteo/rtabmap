@@ -1,7 +1,7 @@
 #pragma once
 
-#ifndef FOCAL_LOSS_H
-#define FOCAL_LOSS_H
+#ifndef CROSS_ENTROPY_LOSS_H
+#define CROSS_ENTROPY_LOSS_H
 
 #include "rtabmap/core/rtabmap_core_export.h" // DLL export/import defines
 #include <torch/torch.h>
@@ -10,18 +10,14 @@
 namespace rtabmap
 {
 
-    struct RTABMAP_CORE_EXPORT FocalLossImpl : public CustomLossImpl
+    struct RTABMAP_CORE_EXPORT CrossEntropyLossImpl : public CustomLossImpl
     {
-        torch::Scalar gamma;
+        CrossEntropyLossImpl(torch::nn::CrossEntropyLossOptions options = {}) : CustomLossImpl(options) {}
 
-        FocalLossImpl(float gamma);
-                      
         virtual torch::Tensor compute(const torch::Tensor &input, const torch::Tensor &target);
-
-
     };
 
-    TORCH_MODULE(FocalLoss);
+    TORCH_MODULE(CrossEntropyLoss);
 
 }
 #endif

@@ -1,0 +1,30 @@
+#pragma once
+
+#ifndef BASE_BUFFER_H
+#define BASE_BUFFER_H
+
+#include "rtabmap/core/rtabmap_core_export.h" // DLL export/import defines
+
+#include "rtabmap/core/region/datasets/LatentDataset.h"
+
+namespace rtabmap
+{
+    class RTABMAP_CORE_EXPORT Buffer
+    {
+    public:
+        Buffer(size_t max_size);
+
+        inline const std::shared_ptr<LatentDataset> &buffer() const { return this->_buffer; }
+        void buffer(const std::shared_ptr<LatentDataset> &new_buffer) { this->_buffer = new_buffer; }
+
+        virtual void update(const std::shared_ptr<LatentDataset> &new_data) = 0;
+        virtual void resize(size_t new_size) = 0;
+        virtual void get_ids_in_memory(std::unordered_set<int> &ids_in_memory) const = 0;
+
+    protected:
+        size_t _max_size;
+        std::shared_ptr<LatentDataset> _buffer;
+    };
+}
+
+#endif

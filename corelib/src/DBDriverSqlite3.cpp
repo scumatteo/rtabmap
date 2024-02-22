@@ -6537,7 +6537,6 @@ namespace rtabmap
 								{
 									UFATAL("Wrong format of the Data.calibration field (size=%d bytes)", dataSize);
 								}
-								
 							}
 							else
 							{
@@ -6835,7 +6834,8 @@ namespace rtabmap
 			{
 				query << " AND weight=0";
 			}
-			if(excludedIds.size() > 0){
+			if (excludedIds.size() > 0)
+			{
 				query << " AND id NOT IN (";
 				std::copy(excludedIds.begin(), excludedIds.end(), std::ostream_iterator<int>(query, ","));
 
@@ -6986,6 +6986,7 @@ namespace rtabmap
 				}
 				rc = sqlite3_step(ppStmt);
 			}
+			UASSERT_MSG(rc == SQLITE_DONE, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
 
 			// Finalize (delete) the statement
 			rc = sqlite3_finalize(ppStmt);
@@ -7081,7 +7082,7 @@ namespace rtabmap
 
 			// ULOGGER_DEBUG("Time update regions of size %d=%fs", (int)signaturesMoved.size(), timer.ticks());
 
-			for(const auto &id_region : signaturesMoved)
+			for (const auto &id_region : signaturesMoved)
 			{
 				int index = 1;
 				rc = sqlite3_bind_int(ppStmt, index++, id_region.second);
@@ -7108,7 +7109,7 @@ namespace rtabmap
 		}
 	}
 
-	void DBDriverSqlite3::updateClusteringQuery(float totalMesh, int totalConnections, int totalRegions) const 
+	void DBDriverSqlite3::updateClusteringQuery(float totalMesh, int totalConnections, int totalRegions) const
 	{
 		if (_ppDb)
 		{
@@ -7178,11 +7179,250 @@ namespace rtabmap
 			else
 			{
 				ULOGGER_DEBUG("DBDriverSqlite3::loadClusteringQuery no clustering parameters in DB");
+				totalMesh = 0;
+				totalConnections = 0;
+				totalRegions = 0;
 			}
 			UASSERT_MSG(rc == SQLITE_DONE, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
 			rc = sqlite3_finalize(ppStmt);
 			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
 		}
 	}
+
+	void DBDriverSqlite3::saveLatentDataQuery(const std::vector<size_t> &ids, const torch::Tensor &data) const
+	{
+		UDEBUG("");
+		if (_ppDb && ids.size())
+		{
+			UTimer timer;
+			timer.start();
+			int rc = SQLITE_OK;
+			sqlite3_stmt *ppStmt = 0;
+
+			// Signature table
+			std::string query = "INSERT INTO LatentData(id, data) VALUES(?, ?);";
+			rc = sqlite3_prepare_v2(_ppDb, query.c_str(), -1, &ppStmt, 0);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			for (size_t i = 0; i < ids.size(); i++)
+			{
+				rc = sqlite3_bind_int(ppStmt, 1, (int)ids[i]);
+				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+				std::vector<char> serialized_tensor = torch::pickle_save(data[i].clone());
+				rc = sqlite3_bind_blob(ppStmt, 2, serialized_tensor.data(), serialized_tensor.size() * sizeof(char), SQLITE_STATIC);
+				// rc = sqlite3_bind_text(ppStmt, 2, serialized_tensor.data(), -1, SQLITE_STATIC);
+				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+				// step
+				rc = sqlite3_step(ppStmt);
+				UASSERT_MSG(rc == SQLITE_DONE, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+				rc = sqlite3_reset(ppStmt);
+				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+			}
+
+			// Finalize (delete) the statement
+			rc = sqlite3_finalize(ppStmt);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+			ULOGGER_DEBUG("Time saving latent data=%fs", timer.ticks());
+		}
+	}
+
+	void DBDriverSqlite3::saveReplayMemoryQuery(const std::vector<size_t> &ids,
+												const torch::Tensor &data,
+												const std::unordered_set<int> &idsInReplayMemory) const
+	{
+		UDEBUG("");
+		if (_ppDb && ids.size())
+		{
+			UTimer timer;
+			timer.start();
+			int rc = SQLITE_OK;
+			sqlite3_stmt *ppStmt = 0;
+
+			// Signature table
+			std::string query = "INSERT INTO ReplayMemory(id, data, in_memory) VALUES(?, ?, ?);";
+			rc = sqlite3_prepare_v2(_ppDb, query.c_str(), -1, &ppStmt, 0);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			for (size_t i = 0; i < ids.size(); i++)
+			{
+				rc = sqlite3_bind_int(ppStmt, 1, (int)ids[i]);
+				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+				std::vector<char> serialized_tensor = torch::pickle_save(data[i].clone());
+				rc = sqlite3_bind_blob(ppStmt, 2, serialized_tensor.data(), serialized_tensor.size() * sizeof(char), SQLITE_STATIC);
+				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+				if (idsInReplayMemory.find((int)ids[i]) != idsInReplayMemory.end())
+				{
+					rc = sqlite3_bind_int(ppStmt, 3, 1);
+				}
+				else
+				{
+					rc = sqlite3_bind_int(ppStmt, 3, 0);
+				}
+				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+				// step
+				rc = sqlite3_step(ppStmt);
+				UASSERT_MSG(rc == SQLITE_DONE, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+				rc = sqlite3_reset(ppStmt);
+				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+			}
+
+			// Finalize (delete) the statement
+			rc = sqlite3_finalize(ppStmt);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+			ULOGGER_DEBUG("Time saving replay memory=%fs", timer.ticks());
+		}
+		this->updateInReplayMemory(idsInReplayMemory);
+	}
+
+	void DBDriverSqlite3::updateInReplayMemory(const std::unordered_set<int> &idsInReplayMemory) const
+	{
+		UDEBUG("");
+		if (_ppDb && idsInReplayMemory.size())
+		{
+			UTimer timer;
+			timer.start();
+			int rc = SQLITE_OK;
+			sqlite3_stmt *ppStmt = 0;
+
+			std::stringstream query;
+			query << "UPDATE ReplayMemory SET in_memory=0 WHERE id NOT IN (";
+			std::copy(idsInReplayMemory.begin(), idsInReplayMemory.end(), std::ostream_iterator<int>(query, ","));
+			// Remove the trailing comma
+			query.seekp(-1, std::ios_base::end);
+			// Finish the query with ")"
+			query << ");";
+
+			rc = sqlite3_prepare_v2(_ppDb, query.str().c_str(), -1, &ppStmt, 0);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			rc = sqlite3_step(ppStmt);
+			UASSERT_MSG(rc == SQLITE_DONE, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			rc = sqlite3_finalize(ppStmt);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			ULOGGER_DEBUG("Time update replay memory=%fs", timer.ticks());
+		}
+	}
+
+	void DBDriverSqlite3::loadReplayMemoryQuery(std::vector<size_t> &ids, torch::Tensor &data, torch::Tensor &labels) const
+	{
+		UDEBUG("");
+		if (_ppDb)
+		{
+			UTimer timer;
+			timer.start();
+			int rc = SQLITE_OK;
+			sqlite3_stmt *ppStmt = 0;
+			std::string query = "SELECT id, data FROM ReplayMemory WHERE in_memory=1;";
+			std::vector<torch::Tensor> loadedTensors;
+
+			rc = sqlite3_prepare_v2(_ppDb, query.c_str(), -1, &ppStmt, 0);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			// Process the result if one
+			rc = sqlite3_step(ppStmt);
+			while (rc == SQLITE_ROW)
+			{
+				int id = 0;
+				const void *blobData = 0;
+				int blobSize = 0;
+				torch::Tensor currentData;
+
+				int index = 0;
+				id = sqlite3_column_int(ppStmt, index++);	   // Signature Id
+				blobData = sqlite3_column_blob(ppStmt, index); // blob tensor
+				blobSize = sqlite3_column_bytes(ppStmt, index++);
+
+				ids.emplace_back(id);
+
+				if (blobData)
+				{
+					UASSERT(blobSize % sizeof(char) == 0);
+					std::vector<char> blobVector(static_cast<const char *>(blobData), static_cast<const char *>(blobData) + blobSize);
+					loadedTensors.emplace_back(torch::pickle_load(blobVector).toTensor());
+				}
+
+				rc = sqlite3_step(ppStmt);
+			}
+			UASSERT_MSG(rc == SQLITE_DONE, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+			UASSERT_MSG(ids.size() == loadedTensors.size(), uFormat("loadReplayMemoryQuery error (%s): ids size=%d, data size=%d", _version.c_str(), (int)ids.size(), (int)loadedTensors.size()));
+
+			// Finalize (delete) the statement
+			rc = sqlite3_finalize(ppStmt);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			if (ids.size() > 0)
+			{
+				data = torch::cat(loadedTensors);
+				std::vector<int> regionIds;
+				this->loadRegionsIds(ids, regionIds);
+				std::vector<at::Tensor> labels_vec(regionIds.size());
+
+				for (int i = 0; i < regionIds.size(); i++)
+				{
+					labels_vec[i] = torch::tensor(static_cast<int64_t>(regionIds[i]));
+				}
+
+				labels = torch::stack(labels_vec).to(torch::kLong);
+			}
+
+			ULOGGER_DEBUG("Time load replay memory=%fs", timer.ticks());
+		}
+	}
+
+	void DBDriverSqlite3::loadRegionsIds(const std::vector<size_t> &ids, std::vector<int> &regionIds) const
+	{
+		UDEBUG("");
+		if (_ppDb)
+		{
+			UTimer timer;
+			timer.start();
+			int rc = SQLITE_OK;
+			sqlite3_stmt *ppStmt = 0;
+			std::string query = "SELECT region_id FROM Node WHERE id=?;";
+
+			ULOGGER_DEBUG("Query: %s", query.c_str());
+
+			rc = sqlite3_prepare_v2(_ppDb, query.c_str(), -1, &ppStmt, 0);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+			for (size_t i = 0; i < ids.size(); i++)
+			{
+				//  bind id
+				rc = sqlite3_bind_int(ppStmt, 1, (int)ids[i]);
+				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+				// Process the result if one
+				rc = sqlite3_step(ppStmt);
+				if (rc == SQLITE_ROW)
+				{
+					int id = 0;
+					id = sqlite3_column_int(ppStmt, 0); // Region Id
+					regionIds.emplace_back(id);
+					rc = sqlite3_step(ppStmt);
+				}
+				UASSERT_MSG(rc == SQLITE_DONE, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+
+				rc = sqlite3_reset(ppStmt);
+				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+			}
+
+			UASSERT_MSG(ids.size() == regionIds.size(), uFormat("loadRegionsIds error (%s): ids size=%d, regionIds size=%d", _version.c_str(), (int)ids.size(), (int)regionIds.size()));
+
+			rc = sqlite3_finalize(ppStmt);
+			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+			ULOGGER_DEBUG("Time load regionIds=%fs", timer.ticks());
+		}
+	}
+
+	// void DBDriverSqlite3::loadLatentDataQuery(const std::list<int> &ids, torch::Tensor &data) const
+	// {
+
+	// }
 
 } // namespace rtabmap

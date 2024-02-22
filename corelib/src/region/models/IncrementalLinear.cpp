@@ -1,19 +1,13 @@
 #include "rtabmap/core/region/models/IncrementalLinear.h"
+#include "rtabmap/utilite/ULogger.h"
 
 namespace rtabmap
 {
     IncrementalLinearImpl::IncrementalLinearImpl(size_t in_features,
                                                  size_t initial_out_features) : linear(torch::nn::Linear(in_features, initial_out_features))
     {
-        this->register_all_();
+        register_module("fc", this->linear);
     }
-
-    // IncrementalLinearImpl::IncrementalLinearImpl(const std::string &model_path, 
-    //                                              size_t initial_out_features) : model_path(model_path),
-    //                                                                             linear(torch::nn::Linear(512, initial_out_features))
-    // {
-    //     this->register_all_();
-    // }
 
     torch::Tensor IncrementalLinearImpl::forward(const torch::Tensor &input)
     {
@@ -42,31 +36,19 @@ namespace rtabmap
         torch::Tensor old_bias = this->linear->bias;
 
         this->linear = torch::nn::Linear(this->linear->options.in_features(), new_n_classes);
-
         this->linear->to(old_weights.device());
 
-        for (size_t i = 0; i < old_n_classes; i++)
-        {
-            this->linear->weight[i].set_data(old_weights[i]);
-            this->linear->bias[i].set_data(old_bias[i]);
-        }
-    }
+        torch::Tensor new_weights = this->linear->weight.slice(0, old_n_classes, new_n_classes);
+        new_weights = torch::cat({old_weights, new_weights});
 
-    void IncrementalLinearImpl::reset()
-    {
+        torch::Tensor new_bias = this->linear->bias.slice(0, old_n_classes, new_n_classes);
+        new_bias = torch::cat({old_bias, new_bias});
 
-        // this->rebuild_all_();
-        this->register_all_();
-    }
+        this->linear->weight.set_data(new_weights);
+        this->linear->bias.set_data(new_bias);
 
-    void IncrementalLinearImpl::rebuild_all_()
-    {
-        this->linear = std::dynamic_pointer_cast<torch::nn::LinearImpl>(this->linear->clone());
-    }
-
-    void IncrementalLinearImpl::register_all_()
-    {
-        register_module("fc", this->linear);
+        this->replace_module("fc", this->linear);
+        ULOGGER_DEBUG("New model neurons:%d", this->linear->options.out_features());
     }
 
 }

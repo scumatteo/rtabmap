@@ -1,107 +1,154 @@
 #include "rtabmap/core/region/datasets/LatentDataset.h"
+#include "rtabmap/utilite/ULogger.h"
 
 namespace rtabmap
 {
-    LatentDataset::LatentDataset() : dataset_size_(0)
+    LatentDataset::LatentDataset()
     {
     }
 
     LatentDataset::LatentDataset(const std::vector<size_t> &ids,
-                                 const torch::Tensor &freezed_features,
-                                 const torch::Tensor &labels) : ids_(ids),
-                                                                freezed_features_(freezed_features),
-                                                                labels_(labels),
-                                                                dataset_size_(ids.size())
+                                 const torch::Tensor &features,
+                                 const torch::Tensor &labels) : _ids(ids),
+                                                                _features(features),
+                                                                _labels(labels)
     {
         for (int i = 0; i < ids.size(); i++)
         {
-            this->id_index_.insert({ids[i], i});
+            this->_id_index.insert({ids[i], i});
         }
+
+        std::tuple<at::Tensor, at::Tensor, at::Tensor> unique_values = at::_unique2(this->_labels, false, false, true);
+        this->_classes_in_dataset = std::get<0>(unique_values);
+        this->_samples_per_class = std::get<2>(unique_values);
     }
 
     torch::data::Example<torch::Tensor, torch::Tensor> LatentDataset::get(size_t index)
     {
-        return torch::data::Example<torch::Tensor, torch::Tensor>(this->freezed_features_[index], this->labels_[index]);
+        return {this->_features[index], this->_labels[index]};
     }
 
-    // void LatentDataset::update_x_at(size_t id, const torch::Tensor &x)
-    // {
-    //     this->freezed_features_[this->id_index_.at(id)] = x;
-    // }
-
-    void LatentDataset::update_y_at(size_t id, const torch::Tensor &y)
+    void LatentDataset::update_label(size_t id, const torch::Tensor &new_label)
     {
-        this->labels_[this->id_index_.at(id)] = y;
+        if (this->_id_index.count(id))
+        {
+            this->_labels[this->_id_index[id]] = new_label;
+            ULOGGER_DEBUG("Label at id=%d updated with new_label=%d", (int)id, new_label.item().toInt());
+            return;
+        }
+        ULOGGER_DEBUG("Label not updated, id=%d", (int)id);
     }
 
-    // void LatentDataset::update_at(size_t id, const torch::Tensor &x, const torch::Tensor &y)
+    // std::shared_ptr<LatentDataset> LatentDataset::concat(const std::shared_ptr<LatentDataset> &other)
     // {
-    //     this->update_x_at(id, x);
-    //     this->update_y_at(id, y);
+    //     ULOGGER_DEBUG("LatendDataset::concat, this size=%d, other size=%d", (int)this->size(), (int)other->size())
+    //     std::vector<size_t> new_ids;
+    //     std::vector<torch::Tensor> new_features;
+    //     std::vector<torch::Tensor> new_labels;
+
+    //     for (const auto &i : this->_id_index)
+    //     {
+    //         new_ids.emplace_back(i.first);
+    //         auto data = this->get(i.second);
+    //         new_features.emplace_back(data.data);
+    //         new_labels.emplace_back(data.target);
+    //     }
+
+    //     for (const auto &i : other->id_index())
+    //     {
+    //         if (!this->_id_index.count(i.first))
+    //         {
+    //             new_ids.emplace_back(i.first);
+    //             auto data = other->get(i.second);
+    //             new_features.emplace_back(data.data);
+    //             new_labels.emplace_back(data.target);
+    //         }
+    //     }
+    //     ULOGGER_DEBUG("LatendDataset::concat, new size=%d", (int)new_ids.size());
+    //     return std::make_shared<LatentDataset>(new_ids, torch::stack(new_features), torch::stack(new_labels));
     // }
 
-    std::shared_ptr<LatentDataset> LatentDataset::concat(const std::shared_ptr<LatentDataset> &other)
-    {
+    // std::shared_ptr<LatentDataset> LatentDataset::subset(const at::Tensor &indices)
+    // {
+    //     ULOGGER_DEBUG("LatendDataset::subset, indices size=%d", (int)indices.size(0));
+    //     std::vector<size_t> new_ids(indices.size(0));
+    //     std::vector<torch::Tensor> new_features(indices.size(0));
+    //     std::vector<torch::Tensor> new_labels(indices.size(0));
 
+    //     //cannot vectorize since ids is vector
+    //     for (int i = 0; i < indices.size(0); i++)
+    //     {
+    //         new_ids[i] = this->_ids[indices[i].item().toLong()];
+    //         new_freezed_features[i] = this->_features[indices[i].item().toLong()];
+    //         new_labels[i] = this->_labels[indices[i].item().toLong()];
+    //     }
+
+    //     return std::make_shared<LatentDataset>(new_ids, torch::stack(new_features), torch::stack(new_labels));
+    // }
+
+    void LatentDataset::concat(const std::shared_ptr<LatentDataset> &other, std::shared_ptr<LatentDataset> &concat_dataset)
+    {
+        ULOGGER_DEBUG("This size=%d, other size=%d", (int)this->size().value_or(0), (int)other->size().value_or(0));
         std::vector<size_t> new_ids;
-        std::vector<torch::Tensor> new_freezed_features;
+        std::vector<torch::Tensor> new_features;
         std::vector<torch::Tensor> new_labels;
 
-        for (const auto &i : this->id_index_)
+        for (const auto &i : this->_id_index)
         {
             new_ids.emplace_back(i.first);
             auto data = this->get(i.second);
-            new_freezed_features.emplace_back(data.data);
+            new_features.emplace_back(data.data);
             new_labels.emplace_back(data.target);
         }
 
         for (const auto &i : other->id_index())
         {
-            if (!this->id_index_.count(i.first))
+            if (!this->_id_index.count(i.first))
             {
                 new_ids.emplace_back(i.first);
                 auto data = other->get(i.second);
-                new_freezed_features.emplace_back(data.data);
+                new_features.emplace_back(data.data);
                 new_labels.emplace_back(data.target);
             }
+            else
+            {
+                ULOGGER_DEBUG("Found identical id=%d", (int)i.first);
+            }
         }
-
-        // for (int i = 0; i < new_freezed_features.size(); i++)
-        // {
-        //     std::cout << new_freezed_features[i] << "\n";
-        //     std::cout << new_labels[i] << "\n";
-        // }
-
-        // std::cout << new_freezed_features.size() << "\n";
-        // std::cout << new_labels.size() << "\n";
-
-        // auto new_freezed_features_tensor = torch::stack(new_freezed_features);
-        // auto new_labels_tensor = torch::stack(new_labels);
-        // auto new_data =
-        // for(int i = 0; i < new_ids.size(); i++){
-        //     std::cout << "IND " << i << "\n";
-        // }
-        return std::make_shared<LatentDataset>(new_ids, torch::stack(new_freezed_features), torch::stack(new_labels));
+        ULOGGER_DEBUG("New size=%d", (int)new_ids.size());
+        concat_dataset = std::make_shared<LatentDataset>(new_ids, torch::stack(new_features), torch::stack(new_labels));
     }
 
-    std::shared_ptr<LatentDataset> LatentDataset::subset(const at::Tensor &indices)
+    void LatentDataset::subset(const at::Tensor &indices, std::shared_ptr<LatentDataset> &subset_dataset)
     {
-        
-        //std::cout << "LEN " << indices.sizes() << "\n";
-    
+        ULOGGER_DEBUG("LatendDataset::subset, indices size=%d", (int)indices.size(0));
         std::vector<size_t> new_ids(indices.size(0));
-        std::vector<torch::Tensor> new_freezed_features(indices.size(0));
+        std::vector<torch::Tensor> new_features(indices.size(0));
         std::vector<torch::Tensor> new_labels(indices.size(0));
 
+        // cannot vectorize since ids is vector
         for (int i = 0; i < indices.size(0); i++)
         {
-            
-            new_ids[i] = this->ids_[indices[i].item().toLong()];
-            new_freezed_features[i] = this->freezed_features_[indices[i].item().toLong()];
-            new_labels[i] = this->labels_[indices[i].item().toLong()];
+            new_ids[i] = this->_ids[indices[i].item().toLong()];
+            new_features[i] = this->_features[indices[i].item().toLong()];
+            new_labels[i] = this->_labels[indices[i].item().toLong()];
         }
 
-        return std::make_shared<LatentDataset>(new_ids, torch::stack(new_freezed_features), torch::stack(new_labels));
+        subset_dataset = std::make_shared<LatentDataset>(new_ids, torch::stack(new_features), torch::stack(new_labels));
+    }
+
+    void LatentDataset::concat_datasets(const std::vector<std::shared_ptr<LatentDataset>> &datasets, std::shared_ptr<LatentDataset> &concat_dataset)
+    {
+        if (datasets.size() == 0)
+        {
+            concat_dataset = std::make_shared<LatentDataset>();
+            return;
+        }
+        concat_dataset = datasets[0];
+        for (size_t i = 1; i < datasets.size(); i++)
+        {
+            concat_dataset->concat(datasets[i], concat_dataset);
+        }
     }
 
 }

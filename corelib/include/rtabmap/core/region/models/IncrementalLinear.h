@@ -11,27 +11,17 @@
 namespace rtabmap
 {
     // Load jit script for feature extractor
-    struct RTABMAP_CORE_EXPORT IncrementalLinearImpl : torch::nn::Cloneable<IncrementalLinearImpl>
+    struct RTABMAP_CORE_EXPORT IncrementalLinearImpl : torch::nn::Module
     {
 
-        // std::string model_path;
         torch::nn::Linear linear;
 
-        IncrementalLinearImpl(size_t in_features,
-                              size_t initial_out_features);
-
-        IncrementalLinearImpl(const std::string &model_path, 
-                              size_t initial_out_features);
+        IncrementalLinearImpl(size_t in_features = 512,
+                              size_t initial_out_features = 0);
 
         torch::Tensor forward(const torch::Tensor &input);
 
         void adapt(const torch::Tensor &classes_in_this_experience);
-
-        void reset() override;
-
-    private:
-        void rebuild_all_();
-        void register_all_();
     };
     TORCH_MODULE(IncrementalLinear);
 }

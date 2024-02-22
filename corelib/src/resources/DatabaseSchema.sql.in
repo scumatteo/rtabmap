@@ -144,6 +144,13 @@ CREATE TABLE Clustering (
 	PRIMARY KEY (id)
 );
 
+CREATE TABLE ReplayMemory (
+	id INTEGER NOT NULL,
+	data BLOB,
+	in_memory INTEGER,
+	PRIMARY KEY (id)
+);
+
 -- *******************************************************************
 -- TRIGGERS
 -- *******************************************************************
@@ -184,6 +191,8 @@ CREATE INDEX IDX_Link_from_id on Link (from_id);
 CREATE UNIQUE INDEX IDX_node_label on Node (label);
 CREATE UNIQUE INDEX IDX_Statistics_id on Statistics (id);
 CREATE UNIQUE INDEX IDX_Clustering_id on Clustering (id);
+CREATE UNIQUE INDEX IDX_ReplayMemory_id on ReplayMemory (id);
+
 
 -- *******************************************************************
 -- VERSION

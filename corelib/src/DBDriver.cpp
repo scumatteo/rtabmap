@@ -1444,7 +1444,8 @@ namespace rtabmap
 
 	void DBDriver::updateRegions(std::unordered_map<int, int> &signaturesMoved) const
 	{
-		if(signaturesMoved.size() > 0){
+		if (signaturesMoved.size() > 0)
+		{
 			_dbSafeAccessMutex.lock();
 			this->updateRegionsQuery(signaturesMoved);
 			_dbSafeAccessMutex.unlock();
@@ -1462,6 +1463,35 @@ namespace rtabmap
 	{
 		_dbSafeAccessMutex.lock();
 		this->loadClusteringQuery(totalMesh, totalConnections, totalRegions);
+		_dbSafeAccessMutex.unlock();
+	}
+
+	void DBDriver::saveLatentData(const std::vector<size_t> &ids, const torch::Tensor &data) const
+	{
+		if (ids.size() > 0)
+		{
+			_dbSafeAccessMutex.lock();
+			this->saveLatentDataQuery(ids, data);
+			_dbSafeAccessMutex.unlock();
+		}
+	}
+
+	void DBDriver::saveReplayMemory(const std::vector<size_t> &ids, 
+									const torch::Tensor &data, 
+									const std::unordered_set<int> &idsInReplayMemory) const
+	{
+		if (ids.size() > 0)
+		{
+			_dbSafeAccessMutex.lock();
+			this->saveReplayMemoryQuery(ids, data, idsInReplayMemory);
+			_dbSafeAccessMutex.unlock();
+		}
+	}
+
+	void DBDriver::loadReplayMemory(std::vector<size_t> &ids, torch::Tensor &data, torch::Tensor &labels) const
+	{
+		_dbSafeAccessMutex.lock();
+		this->loadReplayMemoryQuery(ids, data, labels);
 		_dbSafeAccessMutex.unlock();
 	}
 

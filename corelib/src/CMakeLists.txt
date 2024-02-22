@@ -207,12 +207,21 @@ IF(TORCH_FOUND)
 	SET(SRC_FILES
 		${SRC_FILES}
 		superpoint_torch/SuperPoint.cc
+		region/datasets/ExperienceDataset.cpp
+		region/datasets/LatentDataset.cpp
+		region/losses/CrossEntropyLoss.cpp
+		region/losses/FocalLoss.cpp
 		region/models/BasicBlock.cpp
 		region/models/FeatureExtractor.cpp
 		region/models/FreezedPart.cpp
 		region/models/IncrementalLinear.cpp
 		region/models/Model.cpp
 		region/models/TrainablePart.cpp
+		region/samplers/ReplaySampler.cpp
+		region/storage_policy/Buffer.cpp
+		region/storage_policy/ClassBalancedBuffer.cpp
+		region/storage_policy/ReservoirSamplingBuffer.cpp
+		region/TrainThread.cpp
 		region/utils.cpp
 	)
 	 SET(PUBLIC_INCLUDE_DIRS

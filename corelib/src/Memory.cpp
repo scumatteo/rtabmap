@@ -145,24 +145,17 @@ namespace rtabmap
 													  _scattering1Const(0),
 													  _topK(Parameters::defaultRegionTopK()),
 													  _modelPath(Parameters::defaultContinualModelPath()),
+													  _checkpointPath(Parameters::defaultContinualCheckpointPath()),
 													  _deviceType(Parameters::defaultContinualDevice()),
 													  _experienceSize(Parameters::defaultContinualExperienceSize()),
-													  _learningRate(Parameters::defaultContinualLearningRate()),
-													  _epochs(Parameters::defaultContinualEpochs()),
-													  _replayMemorySize(Parameters::defaultContinualReplayMemorySize()),
-													  _weightingMethod(Parameters::defaultContinualWeightingMethod()),
-													  _beta(Parameters::defaultContinualBeta()),
-													  _lossFunction(Parameters::defaultContinualLossFunction()),
-													  _gamma(Parameters::defaultContinualGamma()),
-													  _targetWidth(Parameters::defaultContinualTargetWidth()),
-													  _targetHeight(Parameters::defaultContinualTargetHeight()),
-													  _batchSize(Parameters::defaultContinualBatchSize()),
-													  _replayMemoryBatchSize(Parameters::defaultContinualReplayMemoryBatchSize()),
 													  _alpha(Parameters::defaultContinualAlpha()),
 													  _roiX(Parameters::defaultContinualRoiX()),
 													  _roiY(Parameters::defaultContinualRoiY()),
 													  _roiWidth(Parameters::defaultContinualRoiWidth()),
-													  _roiHeight(Parameters::defaultContinualRoiHeight())
+													  _roiHeight(Parameters::defaultContinualRoiHeight()),
+													  _targetWidth(Parameters::defaultContinualTargetWidth()),
+													  _targetHeight(Parameters::defaultContinualTargetHeight())
+
 	{
 		_feature2D = Feature2D::create(parameters);
 		_vwd = new VWDictionary(parameters);
@@ -529,10 +522,9 @@ namespace rtabmap
 		UDEBUG("ids start with %d", _idCount + 1);
 		UDEBUG("map ids start with %d", _idMapCount);
 
-		//load clustering data
+		// load clustering data
 		this->_dbDriver->loadClustering(this->_totalMesh, this->_totalConnections, this->_regionCounter);
-		std::cout << "HERE\n";
-		this->initRegions();
+		this->initRegions(parameters_);
 	}
 
 	void Memory::close(bool databaseSaved, bool postInitClosingEvents, const std::string &ouputDatabasePath)
@@ -854,7 +846,6 @@ namespace rtabmap
 					_memoryChanged = memoryChanged;
 					_linksChanged = linksChanged;
 					this->loadDataFromDb(false);
-					std::cout << "R5\n";
 					UWARN("Switching from Mapping to Localization mode, the database is reloaded!");
 				}
 			}
@@ -6717,7 +6708,7 @@ namespace rtabmap
 		{
 			if (this->_currentRegionId == -1) // first valid node
 			{
-			
+
 				ULOGGER_DEBUG("Total mesh=%f", this->_totalMesh);
 				ULOGGER_DEBUG("Total connections=%d", this->_totalConnections);
 
@@ -6936,7 +6927,7 @@ namespace rtabmap
 		ULOGGER_DEBUG("Time for clustering=%fs", timer.ticks());
 	}
 
-	void Memory::addIdInExperience(int id, int regionId)
+	void Memory::addInExperience(int id, const cv::Mat &image, int regionId)
 	{
 		if (this->_currentExperience.count(id))
 		{
@@ -6944,7 +6935,7 @@ namespace rtabmap
 		}
 		else
 		{
-			this->_currentExperience.insert({id, regionId});
+			this->_currentExperience.insert({id, {image, regionId}});
 		}
 	}
 
@@ -6952,15 +6943,218 @@ namespace rtabmap
 	{
 		if (this->_currentExperience.count(id))
 		{
-			this->_currentExperience[id] = regionId;
+			this->_currentExperience[id].second = regionId;
 		}
 		else
 		{
-			ULOGGER_DEBUG("Trying to add in experience id %d not present. Use addIdInExperience instead.", id);
+			ULOGGER_DEBUG("Trying to update in experience id %d not present. Use addIdInExperience instead.", id);
 		}
 	}
 
-	std::set<int> Memory::reactivateSignaturesByRegions(const std::list<int> &regionsIds, double &timeDbAccess, const std::set<int> &excludedIds)
+	// std::set<int> Memory::reactivateSignaturesByRegions(const std::list<int> &regionsIds, double &timeDbAccess, const std::set<int> &excludedIds)
+	// {
+	// 	UDEBUG("");
+	// 	UTimer timer;
+
+	// 	std::list<Signature *> reactivatedSigns;
+	// 	if (_dbDriver)
+	// 	{
+	// 		for (std::list<int>::const_iterator iter = regionsIds.begin(); iter != regionsIds.end(); ++iter)
+	// 		{
+	// 			ULOGGER_DEBUG("Loading region %d", (*iter));
+	// 			_dbDriver->loadSignaturesByRegion((*iter), reactivatedSigns, true, true, excludedIds);
+	// 		}
+	// 	}
+	// 	timeDbAccess = timer.getElapsedTime();
+
+	// 	std::list<int> idsLoaded;
+	// 	for (std::list<Signature *>::iterator i = reactivatedSigns.begin(); i != reactivatedSigns.end(); ++i)
+	// 	{
+	// 		if (!(*i)->getLandmarks().empty())
+	// 		{
+	// 			// Update landmark indexes
+	// 			for (std::map<int, Link>::const_iterator iter = (*i)->getLandmarks().begin(); iter != (*i)->getLandmarks().end(); ++iter)
+	// 			{
+	// 				int landmarkId = iter->first;
+	// 				UASSERT(landmarkId < 0);
+
+	// 				cv::Mat landmarkSize = iter->second.uncompressUserDataConst();
+	// 				if (!landmarkSize.empty() && landmarkSize.type() == CV_32FC1 && landmarkSize.total() == 1)
+	// 				{
+	// 					std::pair<std::map<int, float>::iterator, bool> inserted = _landmarksSize.insert(std::make_pair(-landmarkId, landmarkSize.at<float>(0, 0)));
+	// 					if (!inserted.second)
+	// 					{
+	// 						if (inserted.first->second != landmarkSize.at<float>(0, 0))
+	// 						{
+	// 							UWARN("Trying to update landmark size buffer for landmark %d with size=%f but "
+	// 								  "it has already a different size set. Keeping old size (%f).",
+	// 								  -landmarkId, inserted.first->second, landmarkSize.at<float>(0, 0));
+	// 						}
+	// 					}
+	// 				}
+
+	// 				std::map<int, std::set<int>>::iterator nter = _landmarksIndex.find(landmarkId);
+	// 				if (nter != _landmarksIndex.end())
+	// 				{
+	// 					nter->second.insert((*i)->id());
+	// 				}
+	// 				else
+	// 				{
+	// 					std::set<int> tmp;
+	// 					tmp.insert((*i)->id());
+	// 					_landmarksIndex.insert(std::make_pair(landmarkId, tmp));
+	// 				}
+	// 			}
+	// 		}
+
+	// 		idsLoaded.push_back((*i)->id());
+	// 		// append to working memory
+	// 		this->addSignatureToWmFromLTM(*i);
+	// 	}
+	// 	this->enableWordsRef(idsLoaded);
+	// 	UDEBUG("Time to reactivate signatures by region = %fs", timer.ticks());
+	// 	return std::set<int>(idsLoaded.begin(), idsLoaded.end());
+	// }
+
+	void Memory::parseRegionParameters(const ParametersMap &parameters)
+	{
+		// regions params
+		Parameters::parse(parameters, Parameters::kRegionRadiusUpperBound(), _radiusUpperBound);
+		Parameters::parse(parameters, Parameters::kRegionDesiredAverageCardinality(), _desiredAverageCardinality);
+		Parameters::parse(parameters, Parameters::kRegionMeshShapeFactor(), _meshShapeFactor);
+		_scattering1Const = _desiredAverageCardinality * sqrt(_desiredAverageCardinality);
+
+		Parameters::parse(parameters, Parameters::kRegionTopK(), _topK);
+
+		Parameters::parse(parameters, Parameters::kContinualModelPath(), _modelPath);
+		Parameters::parse(parameters, Parameters::kContinualCheckpointPath(), _checkpointPath);
+		Parameters::parse(parameters, Parameters::kContinualDevice(), _deviceType);
+		Parameters::parse(parameters, Parameters::kContinualExperienceSize(), _experienceSize);
+		Parameters::parse(parameters, Parameters::kContinualAlpha(), _alpha);
+		Parameters::parse(parameters, Parameters::kContinualRoiX(), _roiX);
+		Parameters::parse(parameters, Parameters::kContinualRoiY(), _roiY);
+		Parameters::parse(parameters, Parameters::kContinualRoiWidth(), _roiWidth);
+		Parameters::parse(parameters, Parameters::kContinualRoiHeight(), _roiHeight);
+		Parameters::parse(parameters, Parameters::kContinualTargetWidth(), _targetWidth);
+		Parameters::parse(parameters, Parameters::kContinualTargetHeight(), _targetHeight);
+	}
+
+	void Memory::initRegions(const ParametersMap &parameters)
+	{
+		this->_device = this->_deviceType && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+
+		FeatureExtractor featureExtractor;
+		IncrementalLinear classifier(512, this->_regionCounter);
+		//_regionCounter corresponds to the number of classes
+		if (this->_regionCounter == 0) // no checkpoint yet, load initial model
+		{
+			this->_model = Model(featureExtractor, classifier, _modelPath);
+		}
+		else if (this->_regionCounter > 0)
+		{
+			this->_model = Model(featureExtractor, classifier, _checkpointPath);
+		}
+		else
+		{
+			ULOGGER_ERROR("region counter < 0 should never happen!");
+		}
+
+		this->_model->eval();
+		this->_model->to(this->_device);
+
+		Model new_model = this->_model->clone();
+		this->_trainThread = std::make_unique<TrainThread>(this, 
+														   new_model, 
+														   parameters, 
+														   static_cast<int64_t>(_targetWidth), 
+														   static_cast<int64_t>(_targetHeight), 
+														   _checkpointPath, 
+														   _device);
+	}
+
+	void Memory::getIdsInRAM(std::set<int> &ids) const
+	{
+		for (const auto &id : this->_stMem)
+		{
+			ids.insert(id);
+		}
+		for (const auto &id_w : this->_workingMem)
+		{
+			ids.insert(id_w.first);
+		}
+	}
+
+	void Memory::train() const
+	{
+		this->_trainThread->train(this->_currentExperience);
+	}
+
+	void Memory::checkModelUpdate()
+	{
+		if (!this->_trainThread->is_training() && this->_trainThread->last_training_end())
+		{
+			this->_model = this->_trainThread->model();
+			ULOGGER_DEBUG("Updating model");
+		}
+	}
+
+	void Memory::sortRegionsProbabilities(const std::vector<float> &predictions, std::vector<std::pair<float, int>> &indices) const
+	{
+		for (int i = 0; i < predictions.size(); i++)
+		{
+			indices.push_back({predictions[i], i});
+		}
+
+		std::sort(indices.rbegin(), indices.rend());
+	}
+
+	void Memory::setCurrentImage()
+	{
+		this->_currentImage = this->_lastSignature->sensorData().imageRaw().clone();
+		ULOGGER_DEBUG("Current image is %s empty", this->_currentImage.empty() ? "" : "not");
+		if (this->_roiWidth != 0 && this->_roiHeight != 0)
+		{
+			cv::Rect roi(this->_roiX, this->_roiY, this->_roiWidth, this->_roiHeight);
+			this->_currentImage = this->_currentImage(roi);
+		}
+		ULOGGER_DEBUG("Cropped image size: %d %d", this->_currentImage.cols, this->_currentImage.rows);
+	}
+
+	void Memory::predict()
+	{
+		ULOGGER_DEBUG("Model trained: %s", this->_model->is_trained() ? "true" : "false");
+		if (this->_model->is_trained()) // always called when output size is at least 1
+		{
+			torch::NoGradGuard no_grad;
+			at::Tensor input = image_to_tensor(this->_currentImage, this->_targetWidth, this->_targetHeight);
+			input = input.to(this->_device);
+			at::Tensor output = this->_model->forward(input);
+			output = torch::squeeze(output, 0).detach().cpu();
+			if (this->_regionProbabilities.size(0) == 0)
+			{
+			}
+			else if (output.size(0) == this->_regionProbabilities.size(0))
+			{
+				output = this->_alpha * output + (1.0 - this->_alpha) * this->_regionProbabilities;
+			}
+			else // new neurons, output.size(0) > _regionProbabilities.size(0)
+			{
+				output.slice(0, 0, this->_regionProbabilities.size(0)) = this->_alpha * output.slice(0, 0, this->_regionProbabilities.size(0)) + (1.0 - this->_alpha) * this->_regionProbabilities;
+			}
+
+			this->_regionProbabilities = output;
+			std::tuple<at::Tensor, at::Tensor> sortedProbabilites = at::sort(this->_regionProbabilities, c10::optional<bool>(false), -1, true);
+			at::Tensor sortedRegionsTensor = std::get<1>(sortedProbabilites).slice(0, 0, this->_topK + 1);
+			std::vector<int> sortedRegions(sortedRegionsTensor.data_ptr<int64_t>(), sortedRegionsTensor.data_ptr<int64_t>() + sortedRegionsTensor.numel());
+			for(size_t i = 0; i < sortedRegions.size(); i++)
+			{
+				ULOGGER_DEBUG("Top-%d prediction=%d", i+1, sortedRegions[i]);
+			}
+			this->_topKRegions = std::set<int>(sortedRegions.begin(), sortedRegions.end());
+		}
+	}
+
+	std::set<int> Memory::reactivateTopKRegions(double &timeDbAccess)
 	{
 		UDEBUG("");
 		UTimer timer;
@@ -6968,7 +7162,9 @@ namespace rtabmap
 		std::list<Signature *> reactivatedSigns;
 		if (_dbDriver)
 		{
-			for (std::list<int>::const_iterator iter = regionsIds.begin(); iter != regionsIds.end(); ++iter)
+			std::set<int> excludedIds;
+			this->getIdsInRAM(excludedIds);
+			for (std::set<int>::const_iterator iter = this->_topKRegions.begin(); iter != this->_topKRegions.end(); ++iter)
 			{
 				ULOGGER_DEBUG("Loading region %d", (*iter));
 				_dbDriver->loadSignaturesByRegion((*iter), reactivatedSigns, true, true, excludedIds);
@@ -7021,169 +7217,36 @@ namespace rtabmap
 			this->addSignatureToWmFromLTM(*i);
 		}
 		this->enableWordsRef(idsLoaded);
-		UDEBUG("Time to reactivate signatures by region = %fs", timer.ticks());
+		UDEBUG("Time for reactivate signatures by region = %fs", timer.ticks());
 		return std::set<int>(idsLoaded.begin(), idsLoaded.end());
 	}
 
-	void Memory::parseRegionParameters(const ParametersMap &parameters)
+	void Memory::saveLatentData(const std::vector<size_t> &ids, const torch::Tensor &data) const
 	{
-		// regions params
-		Parameters::parse(parameters, Parameters::kRegionRadiusUpperBound(), _radiusUpperBound);
-		Parameters::parse(parameters, Parameters::kRegionDesiredAverageCardinality(), _desiredAverageCardinality);
-		Parameters::parse(parameters, Parameters::kRegionMeshShapeFactor(), _meshShapeFactor);
-		_scattering1Const = _desiredAverageCardinality * sqrt(_desiredAverageCardinality);
-
-		Parameters::parse(parameters, Parameters::kRegionTopK(), _topK);
-		
-		Parameters::parse(parameters, Parameters::kContinualModelPath(), _modelPath);
-		Parameters::parse(parameters, Parameters::kContinualDevice(), _deviceType);
-		Parameters::parse(parameters, Parameters::kContinualExperienceSize(), _experienceSize);
-		Parameters::parse(parameters, Parameters::kContinualLearningRate(), _learningRate);
-		Parameters::parse(parameters, Parameters::kContinualEpochs(), _epochs);
-		Parameters::parse(parameters, Parameters::kContinualReplayMemorySize(), _replayMemorySize);
-		Parameters::parse(parameters, Parameters::kContinualWeightingMethod(), _weightingMethod);
-		Parameters::parse(parameters, Parameters::kContinualBeta(), _beta);
-		Parameters::parse(parameters, Parameters::kContinualLossFunction(), _lossFunction);
-		Parameters::parse(parameters, Parameters::kContinualGamma(), _gamma);
-		Parameters::parse(parameters, Parameters::kContinualTargetWidth(), _targetWidth);
-		Parameters::parse(parameters, Parameters::kContinualTargetHeight(), _targetHeight);
-		Parameters::parse(parameters, Parameters::kContinualBatchSize(), _batchSize);
-		Parameters::parse(parameters, Parameters::kContinualReplayMemoryBatchSize(), _replayMemoryBatchSize);
-		Parameters::parse(parameters, Parameters::kContinualAlpha(), _alpha);
-		Parameters::parse(parameters, Parameters::kContinualRoiX(), _roiX);
-		Parameters::parse(parameters, Parameters::kContinualRoiY(), _roiY);
-		Parameters::parse(parameters, Parameters::kContinualRoiWidth(), _roiWidth);
-		Parameters::parse(parameters, Parameters::kContinualRoiHeight(), _roiHeight);
-	}
-
-	void Memory::initRegions() 
-	{
-		_device = _deviceType && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-		_trainMutex = std::make_shared<std::mutex>();
-		FeatureExtractor featureExtractor;
-		IncrementalLinear classifier(512, 5); //this->_regionCounter > 0 ? this->_regionCounter - 1 : this->_regionCounter);
-		_model = Model(featureExtractor, classifier, _modelPath);
-		_model->set_freezed_part();
-		for (const auto &p : _model->feature_extractor->freezed_part->named_parameters())
-        {
-            std::cout << p.value().requires_grad() << "\n";
-        }
-		// _model->eval();
-		// _model->to(this->_device);		
-		Model new_model = std::dynamic_pointer_cast<ModelImpl>(_model->clone());
-		for (const auto &p : new_model->feature_extractor->freezed_part->named_parameters())
-        {
-            std::cout << p.value().requires_grad() << "\n";
-        }
-		new_model->set_freezed_part();
-		for (const auto &p : new_model->feature_extractor->freezed_part->named_parameters())
-        {
-            std::cout << p.value().requires_grad() << "\n";
-        }
-
-	}
-
-	void Memory::getIdsInRAM(std::set<int> &ids) const
-	{
-		for (const auto &id : this->_stMem)
+		if (_dbDriver)
 		{
-			ids.insert(id);
-		}
-		for (const auto &id_w : this->_workingMem)
-		{
-			ids.insert(id_w.first);
+			_dbDriver->saveLatentData(ids, data);
 		}
 	}
 
-	void Memory::sortRegionsProbabilities(const std::vector<float> &predictions, std::vector<std::pair<float, int>> &indices) const
+	void Memory::saveReplayMemory(const std::vector<size_t> &ids, 
+								  const torch::Tensor &data,
+								  const std::unordered_set<int> &idsInReplayMemory) const
 	{
-		for (int i = 0; i < predictions.size(); i++)
+		if (_dbDriver)
 		{
-			indices.push_back({predictions[i], i});
+			_dbDriver->saveReplayMemory(ids, data, idsInReplayMemory);
 		}
-
-		std::sort(indices.rbegin(), indices.rend());
 	}
 
-	void Memory::setCurrentImage()
+	void Memory::loadReplayMemory(std::vector<size_t> &ids, torch::Tensor &data, torch::Tensor &labels) const
 	{
-		this->_currentImage = this->_lastSignature->sensorData().imageRaw().clone();
-		if(this->_roiWidth != 0 && this->_roiHeight != 0)
+		if (_dbDriver)
 		{
-			cv::Rect roi(this->_roiX, this->_roiY, this->_roiWidth, this->_roiHeight);
-			this->_currentImage = this->_currentImage(roi);
+			_dbDriver->loadReplayMemory(ids, data, labels);
 		}
-		ULOGGER_DEBUG("Cropped image size: %d %d", this->_currentImage.cols, this->_currentImage.rows);
 	}
 
-	void Memory::predict()
-	{
-		ULOGGER_DEBUG("Model trained: %s", this->_model->is_trained() ? "true" : "false");
-		// if(this->_model->is_trained()) //always called when output size is at least 1
-		{
-			torch::NoGradGuard no_grad;
-			at::Tensor input = image_to_tensor(this->_currentImage, this->_targetWidth, this->_targetHeight);
-			input = input.to(this->_device);
-			at::Tensor output = this->_model->forward(input);
-			output = output.detach().cpu();
-			
-			if(output.sizes()[0] == this->_regionProbabilities.sizes()[0])
-			{
-				output = this->_alpha * output + (1.0 - this->_alpha) * this->_regionProbabilities;
-			}
-			else //new neurons, output.sizes()[0] > _regionProbabilities.sizes()[0]
-			{
-				output.slice(0, this->_regionProbabilities.sizes()[0]) = this->_alpha * output.slice(0, this->_regionProbabilities.sizes()[0]) + (1.0 - this->_alpha) * this->_regionProbabilities;
-			}
-			this->_regionProbabilities = output;
 
-			std::tuple<at::Tensor, at::Tensor> sortedProbabilites = at::sort(this->_regionProbabilities, c10::optional<bool>(false), -1, true);
-
-			at::Tensor sortedRegionsTensor = std::get<1>(sortedProbabilites).slice(0, this->_topK + 1);
-			std::vector<int> sortedRegions(sortedRegionsTensor.data_ptr<int64_t>(), sortedRegionsTensor.data_ptr<int64_t>() + sortedRegionsTensor.numel());
-			this->_topKRegions = std::set<int>(sortedRegions.begin(), sortedRegions.end());
-			std::cout << this->_topKRegions.size() << "\n";
-
-		}
-		
-	}
-
-	void Memory::reactivateTopKRegions(double &timeDbAccess)
-	{
-		// UTimer timer;
-		// ULOGGER_DEBUG("Prediction on node=%d", json["id"].get<int>());
-		// predictions = json["predictions"].get<std::vector<float>>();
-		// std::vector<std::pair<float, int>> indices;
-		// this->sortRegionsProbabilities(predictions, indices);
-		// std::list<int> regionsToRetrieve;
-		// std::set<int> excludedIds;
-		// this->getIdsInRAM(excludedIds);
-		// this->_topKRegions.clear();
-
-		// ULOGGER_DEBUG("Signatures already in RAM: %d", excludedIds.size());
-		// for (int i = 0; i < indices.size(); i++)
-		// {
-		// 	if (i >= this->_topK)
-		// 	{
-		// 		break;
-		// 	}
-		// 	ULOGGER_DEBUG("Top %d region predicted: %d with probability %f", i + 1, indices[i].second, indices[i].first);
-		// 	regionsToRetrieve.emplace_back(indices[i].second);
-		// 	this->_topKRegions.insert(indices[i].second);
-		// }
-		// // for (int i = 0; i < this->_topK; i++)
-		// // {
-		// // 	if (i < indices.size())
-		// // 	{
-		// // 		ULOGGER_DEBUG("Top %d region predicted: %d with probability %f", i + 1, indices[i].second, indices[i].first);
-		// // 		regionsToRetrieve.emplace_back(indices[i].second);
-		// // 		this->_topKRegions.insert
-		// // 	}
-		// // }
-		// ULOGGER_DEBUG("Time parse and sort predictions=%fs", timer.ticks());
-		// std::set<int> reactivatedRegionsIds = this->reactivateSignaturesByRegions(regionsToRetrieve, timeDbAccess, excludedIds);
-		// ULOGGER_DEBUG("Time for reactivate signatures by region=%fs", timer.ticks());
-		// ULOGGER_DEBUG("Reactivated signatures by region: %d", reactivatedRegionsIds.size());
-	}
 
 } // namespace rtabmap

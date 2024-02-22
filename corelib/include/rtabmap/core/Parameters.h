@@ -882,7 +882,9 @@ class RTABMAP_CORE_EXPORT Parameters
     RTABMAP_PARAM(Continual, ExperienceSize,                int,    600,    "Size of each experience of the continual learning process.");
     RTABMAP_PARAM(Continual, LearningRate,                  double, 0.0001, "Learning rate.");
     RTABMAP_PARAM(Continual, Epochs,                        int,    4,      "Number of epochs for each training.");
+    RTABMAP_PARAM(Continual, Optimizer,                     int,    0,      "0 = Adam, 1 = SGD. Default Adam.");
     RTABMAP_PARAM(Continual, ReplayMemorySize,              int,    1000,   "Replay memory size. 0 to disable replay memory");
+    RTABMAP_PARAM(Continual, ReplayMemory,                  int,    0,      "0 = ReservoirSamplingBuffer, 1 = ClassBalancedBuffer. Default ReservoirSamplingBuffer.");
     RTABMAP_PARAM(Continual, WeightingMethod,               int,    0,      "0 for no weighting, 1 for simple weighting, 2 for effective weighting in Loss function.");
     RTABMAP_PARAM(Continual, Beta,                          double, 0.999,  "Beta for effective weighting.");
     RTABMAP_PARAM(Continual, LossFunction,                  int,    0,      "0 for CrossEntropy, 1 Focal Loss.");
@@ -893,6 +895,7 @@ class RTABMAP_CORE_EXPORT Parameters
     RTABMAP_PARAM(Continual, RoiY,                          int,    0,      "Y roi of the images.");
     RTABMAP_PARAM(Continual, RoiWidth,                      int,    0,      "Width of the roi of the images.");
     RTABMAP_PARAM(Continual, RoiHeight,                     int,    0,      "Height of the roi of the images.");
+    RTABMAP_PARAM(Continual, FeatureBatchSize,              int,    256,    "Batch size of the freezed feature extraction.");
     RTABMAP_PARAM(Continual, BatchSize,                     int,    64,     "Batch size of the current experience.");
     RTABMAP_PARAM(Continual, ReplayMemoryBatchSize,         int,    128,    "Batch size of the replay memory.");
     RTABMAP_PARAM(Continual, Alpha,                         float,  0.8,    "Alpha for exponential moving average. 1 to disable exponential moving average.");

@@ -51,6 +51,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "rtabmap/core/region/models/FeatureExtractor.h"
 #include "rtabmap/core/region/models/IncrementalLinear.h"
 #include "rtabmap/core/region/models/Model.h"
+#include "rtabmap/core/region/TrainThread.h"
+
+#include "torch/torch.h"
 
 namespace rtabmap {
 
@@ -71,6 +74,7 @@ class Region;
 class FeatureExtractor;
 class IncrementalLinear;
 class Model;
+class TrainThread;
 
 class RTABMAP_CORE_EXPORT Memory
 {
@@ -104,7 +108,7 @@ public:
 
 	std::list<int> forget(const std::set<int> & ignoredIds = std::set<int>());
 	std::set<int> reactivateSignatures(const std::list<int> & ids, unsigned int maxLoaded, double & timeDbAccess);
-	std::set<int> reactivateSignaturesByRegions(const std::list<int> &regionsIds, double &timeDbAccess, const std::set<int> &excludedIds);
+	// std::set<int> reactivateSignaturesByRegions(const std::list<int> &regionsIds, double &timeDbAccess, const std::set<int> &excludedIds);
 
 	int cleanup();
 	void saveStatistics(const Statistics & statistics, bool saveWMState);
@@ -290,15 +294,11 @@ public:
 	void assignRegion();
 
 	inline int experienceSize() const { return this->_experienceSize; }
-	inline void setExperienceSize(int size) { this->_experienceSize = size; }
-	inline const std::unordered_map<int, int> &currentExperience() const { return this->_currentExperience; }
-	void addIdInExperience(int id, int regionId);
+	inline const std::unordered_map<int, std::pair<cv::Mat, int>> &currentExperience() const { return this->_currentExperience; }
+	void addInExperience(int id, const cv::Mat &image, int regionId);
 	void updateInExperience(int id, int regionId);
 	inline void clearCurrentExperience() { this->_currentExperience.clear(); }
 	void getIdsInRAM(std::set<int> &ids) const;
-	inline void addImageInExperience() { this->_experienceImages.emplace_back(this->_currentImage); }
-	inline const std::vector<cv::Mat> &getImagesInExperience() const { return this->_experienceImages; }
-	inline void clearImagesInExperience() { this->_experienceImages.clear(); }
 	inline int roiX() const { return this->_roiX; }
 	inline int roiY() const { return this->_roiY; }
 	inline int roiWidth() const { return this->_roiWidth; }
@@ -306,13 +306,20 @@ public:
 	void setCurrentImage();
 	inline const cv::Mat &currentImage() const { return this->_currentImage; }
 	void predict();
+	void train() const;
+	void checkModelUpdate();
 
 	void sortRegionsProbabilities(const std::vector<float> &predictions, std::vector<std::pair<float, int>> &indices) const;
 	inline int topK() const { return this->_topK; }
 	inline const std::set<int> &topKRegions() const { return this->_topKRegions; } 
 	inline void insertInTopKRegions(int id) { this->_topKRegions.insert(id); }
 	inline void clearTopKRegions() { this->_topKRegions.clear(); }
-	void reactivateTopKRegions(double & timeDbAccess);
+	std::set<int> reactivateTopKRegions(double & timeDbAccess);
+	void saveLatentData(const std::vector<size_t> &ids, const torch::Tensor &data) const;
+	void saveReplayMemory(const std::vector<size_t> &ids, 
+						  const torch::Tensor &data, 
+						  const std::unordered_set<int> &idsInReplayMemory) const;
+	void loadReplayMemory(std::vector<size_t> &ids, torch::Tensor &data, torch::Tensor &labels) const;
 
 private:
 	void preUpdate();
@@ -365,7 +372,7 @@ protected:
 
 private:
 	void parseRegionParameters(const ParametersMap &parameters);
-	void initRegions();
+	void initRegions(const ParametersMap &parameters);
 
 	// parameters
 	ParametersMap parameters_;
@@ -464,37 +471,33 @@ private:
 
 	//continual
 	int _experienceSize;
-	std::unordered_map<int, int> _currentExperience;
-	std::vector<cv::Mat> _experienceImages;
-	std::string _modelPath;
-	int _deviceType;
-	torch::DeviceType _device;
-	double _learningRate;
-	int _epochs;
-	int _replayMemorySize;
-	int _weightingMethod;
-	double _beta;
-	int _lossFunction;
-	float _gamma;
-	int _targetWidth;
-	int _targetHeight;
-	int _batchSize;
-	int _replayMemoryBatchSize;
-	float _alpha;
+
 	int _roiX;
 	int _roiY;
 	int _roiWidth;
 	int _roiHeight;
+	int _targetWidth;
+    int _targetHeight;
+	cv::Mat _currentImage; //current image for experience
+	std::unordered_map<int, std::pair<cv::Mat, int>> _currentExperience;
 
-	std::shared_ptr<std::mutex> _trainMutex;
+	std::string _modelPath;
+	std::string _checkpointPath;
+
+	int _deviceType;
+	torch::DeviceType _device;
+
+	//for training
+	std::unique_ptr<TrainThread> _trainThread;
 	Model _model;
-	cv::Mat _currentImage;
-	
 
-
+	//for inference
 	int _topK;
 	std::set<int> _topKRegions;
 	at::Tensor _regionProbabilities;
+	float _alpha;
+
+	
 };
 
 } // namespace rtabmap

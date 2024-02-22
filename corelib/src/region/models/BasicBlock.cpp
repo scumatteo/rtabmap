@@ -4,7 +4,7 @@
 namespace rtabmap
 {
 
-        torch::nn::Conv2dOptions conv_options(int64_t in_planes, int64_t out_planes, int64_t kerner_size,
+    torch::nn::Conv2dOptions conv_options(int64_t in_planes, int64_t out_planes, int64_t kerner_size,
                                           int64_t stride, int64_t padding, bool with_bias)
     {
         torch::nn::Conv2dOptions conv_options = torch::nn::Conv2dOptions(in_planes, out_planes, kerner_size).stride(stride).padding(padding).bias(with_bias);
@@ -21,7 +21,15 @@ namespace rtabmap
           downsample(downsample)
 
     {
-        this->register_all_();
+        register_module("conv1", conv1);
+        register_module("bn1", bn1);
+        register_module("relu", relu);
+        register_module("conv2", conv2);
+        register_module("bn2", bn2);
+        if (!downsample->is_empty())
+        {
+            register_module("downsample", downsample);
+        }
     }
 
     torch::Tensor BasicBlock::forward(torch::Tensor x)
@@ -46,36 +54,6 @@ namespace rtabmap
         return x;
     }
 
-    void BasicBlock::reset()
-    {
-        // this->rebuild_all_();
-        this->register_all_();
-    }
-
-    void BasicBlock::rebuild_all_()
-    {
-        conv1 = std::dynamic_pointer_cast<torch::nn::Conv2dImpl>(conv1->clone());
-        bn1 = std::dynamic_pointer_cast<torch::nn::BatchNorm2dImpl>(bn1->clone());
-        relu = std::dynamic_pointer_cast<torch::nn::ReLUImpl>(relu->clone());
-        conv2 = std::dynamic_pointer_cast<torch::nn::Conv2dImpl>(conv2->clone());
-        bn2 = std::dynamic_pointer_cast<torch::nn::BatchNorm2dImpl>(bn2->clone());
-        downsample = std::dynamic_pointer_cast<torch::nn::SequentialImpl>(downsample->clone());
-    }
-
-    void BasicBlock::register_all_()
-    {
-
-        register_module("conv1", conv1);
-        register_module("bn1", bn1);
-        register_module("relu", relu);
-        register_module("conv2", conv2);
-        register_module("bn2", bn2);
-        if (!downsample->is_empty())
-        {
-            register_module("downsample", downsample);
-        }
-    }
-
     torch::nn::Sequential make_layer(int64_t planes, int64_t inplanes, int64_t blocks, int64_t stride)
     {
         torch::nn::Sequential downsample;
@@ -95,5 +73,4 @@ namespace rtabmap
 
         return layers;
     }
-
 }

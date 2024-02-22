@@ -156,6 +156,12 @@ protected:
 	virtual void updateRegionsQuery(std::unordered_map<int, int> &signaturesMoved) const;
 	virtual void updateClusteringQuery(float totalMesh, int totalConnections, int totalRegions) const;
 	virtual void loadClusteringQuery(float &totalMesh, int &totalConnections, int &totalRegions) const;
+	virtual void saveLatentDataQuery(const std::vector<size_t> &ids, const torch::Tensor &data) const;
+	virtual void saveReplayMemoryQuery(const std::vector<size_t> &ids, 
+									   const torch::Tensor &data, 
+									   const std::unordered_set<int> &idsInReplayMemory) const;
+	virtual void loadReplayMemoryQuery(std::vector<size_t> &ids, torch::Tensor &data, torch::Tensor &labels) const;
+	// virtual void loadLatentDataQuery(const std::list<int> &ids, torch::Tensor &data) const;
 
 private:
 	std::string queryStepNode() const;
@@ -195,6 +201,9 @@ private:
 	void loadCalibrationForSignaturesQuery(std::list<Signature *> & signatures) const;
 	void loadGlobalDescriptorsForSignaturesQuery(std::list<Signature *> & signatures) const;
 	void loadOnlySignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, const std::set<int> &excludedIds = std::set<int>()) const;
+	void updateInReplayMemory(const std::unordered_set<int> &idsInReplayMemory) const;
+	void loadRegionsIds(const std::vector<size_t> &ids, std::vector<int> &regionIds) const;
+
 
 protected:
 	sqlite3 * _ppDb;

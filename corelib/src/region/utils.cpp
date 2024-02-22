@@ -1,5 +1,7 @@
 #include "rtabmap/core/region/utils.h"
+#include "rtabmap/core/region/losses/FocalLoss.h"
 #include <opencv4/opencv2/opencv.hpp>
+#include <rtabmap/utilite/ULogger.h>
 
 namespace rtabmap
 {
@@ -21,9 +23,24 @@ namespace rtabmap
 
     torch::Tensor compute_effective_weights(const torch::Tensor &samples_per_class, float beta)
     {
-        // torch::Tensor samples_per_class = std::get<2>(at::_unique2(labels, true, false, true));
         torch::Tensor effective_sum = 1.0 - torch::pow(beta, samples_per_class);
         torch::Tensor weights = (1.0 - beta) / effective_sum;
         return weights / torch::sum(weights) * samples_per_class.size(0);
+    }
+
+    void save_tensor_serialized(const std::string &file_path, const c10::IValue &ivalue)
+    {
+        std::vector<char> state_dict = torch::pickle_save(ivalue);
+        std::ofstream file(file_path, std::fstream::out | std::ios::binary);
+        file.write(state_dict.data(), state_dict.size());
+        file.close();
+    }
+
+    c10::IValue load_tensor_deserialized(const std::string &file_path)
+    {
+        std::ifstream file(file_path, std::ios::binary);
+        std::vector<char> data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        file.close();
+        return torch::pickle_load(data);
     }
 }

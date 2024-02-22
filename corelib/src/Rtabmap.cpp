@@ -2537,11 +2537,21 @@ namespace rtabmap
 			// RETRIEVAL: Load signatures from the database by regions
 			//============================================================
 
-			// TODO
+			//check for updating model if training end
+			_memory->checkModelUpdate();
 			if (!signature->isBadSignature() && (signature->getWeight() >= 0) && !smallDisplacement && !tooFastMovement)
 			{
+				UTimer inferenceTimer;
+				//inference
 				_memory->predict();
-			// _memory->reactivateTopKRegions(timeRetrievalDbAccess);
+				ULOGGER_DEBUG("Time for inference=%fs", inferenceTimer.ticks());
+				// std::set<int> excludedIds;
+				// _memory->getIdsInRAM(excludedIds);
+				// std::list<int> regionsToRetrieve = std::list<int>(_memory->topKRegions().begin(), _memory->topKRegions().end());
+				// UTimer regionTimer;
+				// std::set<int> reactivatedRegionsIds = _memory->reactivateSignaturesByRegions(regionsToRetrieve, timeRetrievalDbAccess, excludedIds);
+				std::set<int> reactivatedRegionsIds = _memory->reactivateTopKRegions(timeRetrievalDbAccess);
+				ULOGGER_DEBUG("Reactivated signatures by region: %d", reactivatedRegionsIds.size());
 			}
 
 			timeReactivations = timer.ticks();
@@ -4235,16 +4245,12 @@ namespace rtabmap
 				UINFO("Ignoring location %d because invalid!", signature->id());
 				signaturesRemoved.push_back(signature->id());
 
-				_memory->addIdInExperience(signature->id(), signature->regionId());
-				_memory->addImageInExperience();
-
+				_memory->addInExperience(signature->id(), _memory->currentImage(), signature->regionId());
 				_memory->deleteLocation(signature->id(), false, 0, true);
 			}
 			else
 			{
-				_memory->addIdInExperience(signature->id(), signature->regionId());
-				_memory->addImageInExperience();
-
+				_memory->addInExperience(signature->id(), _memory->currentImage(), signature->regionId());
 				_memory->saveLocationData(signature->id());
 			}
 		}
@@ -4273,9 +4279,9 @@ namespace rtabmap
 		if (_memory->currentExperience().size() >= _memory->experienceSize())
 		{
 			ULOGGER_DEBUG("START TRAINING!");
-
+			this->_memory->train();
 			this->_memory->clearCurrentExperience();
-			this->_memory->clearImagesInExperience();
+			// this->_memory->clearImagesInExperience();
 		}
 
 		ULOGGER_DEBUG("WM size before transferring: %d", _memory->getWorkingMem().size());
@@ -4296,28 +4302,28 @@ namespace rtabmap
 		//============================================================
 		double totalTime = timerTotal.ticks();
 		ULOGGER_INFO("Total time processing = %fs...", totalTime);
-		if ((_maxTimeAllowed != 0 && totalTime * 1000 > _maxTimeAllowed) ||
-			(_maxMemoryAllowed != 0 && _memory->getWorkingMem().size() > _maxMemoryAllowed))
-		{
-			ULOGGER_INFO("Removing old signatures because time limit is reached %f>%f or memory is reached %d>%d...", totalTime * 1000, _maxTimeAllowed, _memory->getWorkingMem().size(), _maxMemoryAllowed);
-			immunizedLocations.insert(_lastLocalizationNodeId); // keep the latest localization in working memory
-			std::list<int> transferred = _memory->forget(immunizedLocations);
-			ULOGGER_DEBUG("Signatures transferred: %d", transferred.size());
-			signaturesRemoved.insert(signaturesRemoved.end(), transferred.begin(), transferred.end());
-			if (!_someNodesHaveBeenTransferred && transferred.size())
-			{
-				_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
-			}
-		}
-		// ULOGGER_INFO("Removing old signatures of different regions");
-		// immunizedLocations.insert(_lastLocalizationNodeId); // keep the latest localization in working memory
-		// std::list<int> transferred = _memory->forget(immunizedLocations, _memory->topKRegions());
-		// ULOGGER_DEBUG("Signatures transferred: %d", transferred.size());
-		// signaturesRemoved.insert(signaturesRemoved.end(), transferred.begin(), transferred.end());
-		// if (!_someNodesHaveBeenTransferred && transferred.size())
+		// if ((_maxTimeAllowed != 0 && totalTime * 1000 > _maxTimeAllowed) ||
+		// 	(_maxMemoryAllowed != 0 && _memory->getWorkingMem().size() > _maxMemoryAllowed))
 		// {
-		// 	_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
+		// 	ULOGGER_INFO("Removing old signatures because time limit is reached %f>%f or memory is reached %d>%d...", totalTime * 1000, _maxTimeAllowed, _memory->getWorkingMem().size(), _maxMemoryAllowed);
+		// 	immunizedLocations.insert(_lastLocalizationNodeId); // keep the latest localization in working memory
+		// 	std::list<int> transferred = _memory->forget(immunizedLocations);
+		// 	ULOGGER_DEBUG("Signatures transferred: %d", transferred.size());
+		// 	signaturesRemoved.insert(signaturesRemoved.end(), transferred.begin(), transferred.end());
+		// 	if (!_someNodesHaveBeenTransferred && transferred.size())
+		// 	{
+		// 		_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
+		// 	}
 		// }
+		ULOGGER_INFO("Removing old signatures of different regions");
+		immunizedLocations.insert(_lastLocalizationNodeId); // keep the latest localization in working memory
+		std::list<int> transferred = _memory->forget(immunizedLocations);
+		ULOGGER_DEBUG("Signatures transferred: %d", transferred.size());
+		signaturesRemoved.insert(signaturesRemoved.end(), transferred.begin(), transferred.end());
+		if (!_someNodesHaveBeenTransferred && transferred.size())
+		{
+			_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
+		}
 
 		ULOGGER_DEBUG("WM size after transferring: %d", _memory->getWorkingMem().size());
 

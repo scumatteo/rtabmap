@@ -7,29 +7,29 @@ namespace rtabmap
     ExperienceDataset::ExperienceDataset(const std::vector<size_t> &ids,
                                          const std::vector<cv::Mat> &images,
                                          const std::vector<size_t> &labels,
-                                         const int64_t &image_width,
-                                         const int64_t &image_height) : ids_(ids), dataset_size_(labels.size()) /* : IdDataset::IdDataset(ids) */
+                                         const int64_t &target_width,
+                                         const int64_t &target_height) : _ids(ids) /* : IdDataset::IdDataset(ids) */
     {
         std::vector<torch::Tensor> images_tensor(images.size());
         std::vector<torch::Tensor> labels_tensor(labels.size());
 
         for (int i = 0; i < images.size(); i++)
         {
-            images_tensor[i] = image_to_tensor(images[i], image_width, image_height);
+            images_tensor[i] = image_to_tensor(images[i], target_width, target_height);
             labels_tensor[i] = torch::tensor(static_cast<float>(labels[i]));
         }
 
-        this->images_ = torch::cat(images_tensor);
-        this->labels_ = torch::cat(labels_tensor);
+        this->_images = torch::cat(images_tensor);
+        this->_labels = torch::stack(labels_tensor);
     }
 
     torch::data::Example<> ExperienceDataset::get(size_t index)
     {
 
-        return torch::data::Example<>(this->images_[index], this->labels_[index]);
-        // return torch::data::Example<torch::Tensor, torch::Tensor>(torch::Tensor({this->ids_[index], torch::Tensor({this->images_[index]})}), this->labels_[index];
-        // torch::Tensor tensor = torch::tensor(static_cast<float>(this->ids_[index]));
-        // return torch::data::Example<>(torch::Tensor({this->ids_[index], torch::Tensor({this->images_[index]})}), this->labels_[index]
+        return {this->_images[index], this->_labels[index]};
+        // return torch::data::Example<torch::Tensor, torch::Tensor>(torch::Tensor({this->_ids[index], torch::Tensor({this->images_[index]})}), this->labels_[index];
+        // torch::Tensor tensor = torch::tensor(static_cast<float>(this->_ids[index]));
+        // return torch::data::Example<>(torch::Tensor({this->_ids[index], torch::Tensor({this->images_[index]})}), this->labels_[index]
         // );
     }
 }
