@@ -7042,7 +7042,7 @@ namespace rtabmap
 		}
 	}
 
-	void DBDriverSqlite3::updateRegionsQuery(std::unordered_map<int, int> &signaturesMoved) const
+	void DBDriverSqlite3::updateRegionsQuery(const std::unordered_map<int, std::pair<int, int>> &signaturesMoved) const
 	{
 		if (_ppDb)
 		{
@@ -7085,7 +7085,7 @@ namespace rtabmap
 			for (const auto &id_region : signaturesMoved)
 			{
 				int index = 1;
-				rc = sqlite3_bind_int(ppStmt, index++, id_region.second);
+				rc = sqlite3_bind_int(ppStmt, index++, id_region.second.second);
 				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
 
 				rc = sqlite3_bind_int(ppStmt, index++, id_region.first);

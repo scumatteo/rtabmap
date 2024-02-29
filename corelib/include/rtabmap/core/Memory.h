@@ -297,6 +297,9 @@ public:
 	inline const std::unordered_map<int, std::pair<cv::Mat, int>> &currentExperience() const { return this->_currentExperience; }
 	void addInExperience(int id, const cv::Mat &image, int regionId);
 	void updateInExperience(int id, int regionId);
+	void updateSignaturesMoved(const std::unordered_map<int, std::pair<int, int>> &signaturesMoved);
+	inline const std::unordered_map<int, std::pair<int, int>> &signaturesMoved() const { return this->_signaturesMoved; }
+	inline void clearSignaturesMoved() { this->_signaturesMoved.clear(); }
 	inline void clearCurrentExperience() { this->_currentExperience.clear(); }
 	void getIdsInRAM(std::set<int> &ids) const;
 	inline int roiX() const { return this->_roiX; }
@@ -364,7 +367,7 @@ private:
 
 	void traverseRegion(Signature *currentSignature, std::set<int> &visitedIds);
 	bool isRemovableFromRegion(Signature *signature);
-	void moveFromRegion(Signature *signature, std::unordered_map<int, int> &signaturesMoved);
+	void moveFromRegion(Signature *signature, std::unordered_map<int, std::pair<int, int>> &signaturesMoved);
 	
 
 protected:
@@ -458,6 +461,7 @@ private:
 
 	//regions
 	std::unordered_map<int, Signature *> _clusteringSignatures;
+	std::unordered_map<int, std::pair<int, int>> _signaturesMoved; //id, <old_regionId, new_regionId>
 	int _currentRegionId;
 	int _regionCounter;
 	int _totalConnections;

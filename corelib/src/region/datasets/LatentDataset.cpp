@@ -1,5 +1,6 @@
 #include "rtabmap/core/region/datasets/LatentDataset.h"
 #include "rtabmap/utilite/ULogger.h"
+#include "rtabmap/utilite/UProcessInfo.h"
 
 namespace rtabmap
 {
@@ -89,6 +90,7 @@ namespace rtabmap
     void LatentDataset::concat(const std::shared_ptr<LatentDataset> &other, std::shared_ptr<LatentDataset> &concat_dataset)
     {
         ULOGGER_DEBUG("This size=%d, other size=%d", (int)this->size().value_or(0), (int)other->size().value_or(0));
+        ULOGGER_DEBUG("RAM usage before concat=%ld", UProcessInfo::getMemoryUsage());
         std::vector<size_t> new_ids;
         std::vector<torch::Tensor> new_features;
         std::vector<torch::Tensor> new_labels;
@@ -117,11 +119,13 @@ namespace rtabmap
         }
         ULOGGER_DEBUG("New size=%d", (int)new_ids.size());
         concat_dataset = std::make_shared<LatentDataset>(new_ids, torch::stack(new_features), torch::stack(new_labels));
+        ULOGGER_DEBUG("RAM usage after concat=%ld", UProcessInfo::getMemoryUsage());
     }
 
     void LatentDataset::subset(const at::Tensor &indices, std::shared_ptr<LatentDataset> &subset_dataset)
     {
         ULOGGER_DEBUG("LatendDataset::subset, indices size=%d", (int)indices.size(0));
+        ULOGGER_DEBUG("RAM usage before subset=%ld", UProcessInfo::getMemoryUsage());
         std::vector<size_t> new_ids(indices.size(0));
         std::vector<torch::Tensor> new_features(indices.size(0));
         std::vector<torch::Tensor> new_labels(indices.size(0));
@@ -135,6 +139,7 @@ namespace rtabmap
         }
 
         subset_dataset = std::make_shared<LatentDataset>(new_ids, torch::stack(new_features), torch::stack(new_labels));
+        ULOGGER_DEBUG("RAM usage after subset=%ld", UProcessInfo::getMemoryUsage());
     }
 
     void LatentDataset::concat_datasets(const std::vector<std::shared_ptr<LatentDataset>> &datasets, std::shared_ptr<LatentDataset> &concat_dataset)

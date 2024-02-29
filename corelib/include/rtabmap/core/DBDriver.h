@@ -189,7 +189,7 @@ public:
 	int countRegions() const;
 	void loadSignaturesByRegion(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true, const std::set<int> &excludedIds = std::set<int>()) const;
 	void loadSignaturesForRegionById(int signatureId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const;
-	void updateRegions(std::unordered_map<int, int> &signaturesMoved) const;
+	void updateRegions(const std::unordered_map<int, std::pair<int, int>> &signaturesMoved) const;
 	void updateClustering(float totalMesh, int totalConnections, int totalRegions) const;
 	void loadClustering(float &totalMesh, int &totalConnections, int &totalRegions) const;
 	void saveLatentData(const std::vector<size_t> &ids, const torch::Tensor &data) const;
@@ -305,7 +305,7 @@ protected:
 	virtual int countRegionsQuery() const = 0;
 	virtual void loadSignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true, const std::set<int> &excludedIds = std::set<int>()) const = 0;
 	virtual void loadSignaturesForRegionByIdQuery(int signatureId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const = 0;
-	virtual void updateRegionsQuery(std::unordered_map<int, int> &signaturesMoved) const = 0;
+	virtual void updateRegionsQuery(const std::unordered_map<int, std::pair<int, int>> &signaturesMoved) const = 0;
 	virtual void updateClusteringQuery(float totalMesh, int totalConnections, int totalRegions) const = 0;
 	virtual void loadClusteringQuery(float &totalMesh, int &totalConnections, int &totalRegions) const = 0;
 	virtual void saveLatentDataQuery(const std::vector<size_t> &ids, const torch::Tensor &data) const = 0;

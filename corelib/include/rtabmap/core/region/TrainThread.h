@@ -35,8 +35,8 @@ namespace rtabmap
         bool last_training_end();
         // const Model on_training_end();
 
-        void run(std::unordered_map<int, std::pair<cv::Mat, int>> experience);
-        void train(std::unordered_map<int, std::pair<cv::Mat, int>> experience);
+        void run(const std::unordered_map<int, std::pair<cv::Mat, int>> &experience, const std::unordered_map<int, std::pair<int, int>> &signatures_moved);
+        void train(std::unordered_map<int, std::pair<cv::Mat, int>> experience, std::unordered_map<int, std::pair<int, int>> signatures_moved);
 
     private:
 

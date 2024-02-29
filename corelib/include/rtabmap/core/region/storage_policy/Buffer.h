@@ -20,6 +20,7 @@ namespace rtabmap
         virtual void update(const std::shared_ptr<LatentDataset> &new_data) = 0;
         virtual void resize(size_t new_size) = 0;
         virtual void get_ids_in_memory(std::unordered_set<int> &ids_in_memory) const = 0;
+        // virtual void updateLabels(std::unordered_map<int, std::pair<int, int>> &signatures_moved) = 0;
 
     protected:
         size_t _max_size;

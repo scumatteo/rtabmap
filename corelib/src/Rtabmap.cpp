@@ -4281,6 +4281,7 @@ namespace rtabmap
 			ULOGGER_DEBUG("START TRAINING!");
 			this->_memory->train();
 			this->_memory->clearCurrentExperience();
+			this->_memory->clearSignaturesMoved();
 			// this->_memory->clearImagesInExperience();
 		}
 

@@ -9,4 +9,5 @@ namespace rtabmap
         this->_buffer = std::make_shared<LatentDataset>();
         ULOGGER_DEBUG("New buffer creation of size %d", (int)_max_size);
     }
+    
 }

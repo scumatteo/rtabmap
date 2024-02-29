@@ -6576,7 +6576,7 @@ namespace rtabmap
 		return (visitedIds.size() == (signaturesForRegion.size() - 1));
 	}
 
-	void Memory::moveFromRegion(Signature *signature, std::unordered_map<int, int> &signaturesMoved)
+	void Memory::moveFromRegion(Signature *signature, std::unordered_map<int, std::pair<int, int>> &signaturesMoved)
 	{
 		ULOGGER_DEBUG("Move signature id=%d", signature->id());
 		UTimer timer;
@@ -6665,7 +6665,7 @@ namespace rtabmap
 				{
 
 					ULOGGER_DEBUG("Moved signature id=%d to region=%d", signature->id(), signature->regionId());
-					signaturesMoved.insert({signature->id(), signature->regionId()});
+					signaturesMoved.insert({signature->id(), {initialRegion->id(), signature->regionId()}});
 
 					for (const auto &l : signature->getLinks())
 					{
@@ -6881,7 +6881,7 @@ namespace rtabmap
 
 			this->_dbDriver->updateClustering(this->_totalMesh, this->_totalConnections, this->_regionCounter);
 
-			std::unordered_map<int, int> signaturesMoved; // id, regionId
+			std::unordered_map<int, std::pair<int, int>> signaturesMoved; // id, <old_regionId, new_regionId>
 			this->moveFromRegion(this->_lastSignature, signaturesMoved);
 			for (const auto &l : this->_lastSignature->getLinks()) // connected to the current signature, already cached
 			{
@@ -6896,7 +6896,7 @@ namespace rtabmap
 			for (const auto &id_region : signaturesMoved)
 			{
 				// this->addIdInExperience(id_region.first);
-				this->updateInExperience(id_region.first, id_region.second);
+				this->updateInExperience(id_region.first, id_region.second.second);
 			}
 
 			if (signaturesMoved.count(this->_lastSignature->id()))
@@ -6912,6 +6912,8 @@ namespace rtabmap
 			{
 				UFATAL("DBDriver not valid in Memory assignRegion");
 			}
+
+			this->updateSignaturesMoved(signaturesMoved);
 
 			this->clearCachedSignaturesForClustering();
 		}
@@ -6949,6 +6951,65 @@ namespace rtabmap
 		{
 			ULOGGER_DEBUG("Trying to update in experience id %d not present. Use addIdInExperience instead.", id);
 		}
+	}
+
+	void Memory::updateSignaturesMoved(const std::unordered_map<int, std::pair<int, int>> &signaturesMoved)
+	{
+		for (const auto &idRegion : signaturesMoved)
+		{
+			if (!this->_currentExperience.count(idRegion.first))
+			{
+				if (this->_signaturesMoved.count(idRegion.first))
+				{
+					if (this->_signaturesMoved[idRegion.first].first == signaturesMoved.at(idRegion.first).second)
+					{
+						this->_signaturesMoved.erase(idRegion.first);
+					}
+					else if (this->_signaturesMoved[idRegion.first].second != signaturesMoved.at(idRegion.first).second)
+					{
+						this->_signaturesMoved[idRegion.first].second = signaturesMoved.at(idRegion.first).second;
+					}
+				}
+				else
+				{
+					this->_signaturesMoved.insert({idRegion.first, {idRegion.second.first, idRegion.second.second}});
+				}
+			}
+			else
+			{
+				ULOGGER_DEBUG("Node %d is in current experience. No need for updating.", idRegion.first);
+			}
+		}
+		ULOGGER_DEBUG("Size of signatures moved=%d", (int)this->_signaturesMoved.size());
+
+		
+		// std::set<int> toRemove;
+
+		// for (const auto &idRegion : signaturesMoved)
+		// {
+		// 	if (!this->_currentExperience.count(idRegion.first))
+		// 	{
+		// 		if (this->_signaturesMoved.count(idRegion.first))
+		// 		{
+		// 			if (this->_signaturesMoved[idRegion.first].first == signaturesMoved[idRegion.first].second)
+		// 			{
+		// 				toRemove.insert(this->_signaturesMoved[idRegion.first].first);
+		// 			}
+		// 			else if (this->_signaturesMoved[idRegion.first].second != signaturesMoved[idRegion.first].second)
+		// 			{
+		// 				this->_signaturesMoved[idRegion.first].second = signaturesMoved[idRegion.first].second;
+		// 			}
+		// 		}
+		// 		else
+		// 		{
+		// 			this->_signaturesMoved.insert({idRegion.first, {idRegion.second.first, idRegion.second.second}});
+		// 		}
+		// 	}
+		// 	else
+		// 	{
+		// 		ULOGGER_DEBUG("Node %d is in current experience. No need for updating.", id);
+		// 	}
+		// }
 	}
 
 	// std::set<int> Memory::reactivateSignaturesByRegions(const std::list<int> &regionsIds, double &timeDbAccess, const std::set<int> &excludedIds)
@@ -7063,12 +7124,12 @@ namespace rtabmap
 		this->_model->to(this->_device);
 
 		Model new_model = this->_model->clone();
-		this->_trainThread = std::make_unique<TrainThread>(this, 
-														   new_model, 
-														   parameters, 
-														   static_cast<int64_t>(_targetWidth), 
-														   static_cast<int64_t>(_targetHeight), 
-														   _checkpointPath, 
+		this->_trainThread = std::make_unique<TrainThread>(this,
+														   new_model,
+														   parameters,
+														   static_cast<int64_t>(_targetWidth),
+														   static_cast<int64_t>(_targetHeight),
+														   _checkpointPath,
 														   _device);
 	}
 
@@ -7086,7 +7147,7 @@ namespace rtabmap
 
 	void Memory::train() const
 	{
-		this->_trainThread->train(this->_currentExperience);
+		this->_trainThread->train(this->_currentExperience, this->_signaturesMoved);
 	}
 
 	void Memory::checkModelUpdate()
@@ -7118,6 +7179,8 @@ namespace rtabmap
 			this->_currentImage = this->_currentImage(roi);
 		}
 		ULOGGER_DEBUG("Cropped image size: %d %d", this->_currentImage.cols, this->_currentImage.rows);
+		cv::resize(this->_currentImage, this->_currentImage, cv::Size(this->_targetWidth, this->_targetHeight));
+		ULOGGER_DEBUG("Resized image size: %d %d", this->_currentImage.cols, this->_currentImage.rows);
 	}
 
 	void Memory::predict()
@@ -7146,9 +7209,9 @@ namespace rtabmap
 			std::tuple<at::Tensor, at::Tensor> sortedProbabilites = at::sort(this->_regionProbabilities, c10::optional<bool>(false), -1, true);
 			at::Tensor sortedRegionsTensor = std::get<1>(sortedProbabilites).slice(0, 0, this->_topK + 1);
 			std::vector<int> sortedRegions(sortedRegionsTensor.data_ptr<int64_t>(), sortedRegionsTensor.data_ptr<int64_t>() + sortedRegionsTensor.numel());
-			for(size_t i = 0; i < sortedRegions.size(); i++)
+			for (size_t i = 0; i < sortedRegions.size(); i++)
 			{
-				ULOGGER_DEBUG("Top-%d prediction=%d", i+1, sortedRegions[i]);
+				ULOGGER_DEBUG("Top-%d prediction=%d", i + 1, sortedRegions[i]);
 			}
 			this->_topKRegions = std::set<int>(sortedRegions.begin(), sortedRegions.end());
 		}
@@ -7229,7 +7292,7 @@ namespace rtabmap
 		}
 	}
 
-	void Memory::saveReplayMemory(const std::vector<size_t> &ids, 
+	void Memory::saveReplayMemory(const std::vector<size_t> &ids,
 								  const torch::Tensor &data,
 								  const std::unordered_set<int> &idsInReplayMemory) const
 	{
@@ -7246,7 +7309,5 @@ namespace rtabmap
 			_dbDriver->loadReplayMemory(ids, data, labels);
 		}
 	}
-
-
 
 } // namespace rtabmap

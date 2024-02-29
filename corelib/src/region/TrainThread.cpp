@@ -8,6 +8,7 @@
 #include "rtabmap/core/region/storage_policy/ClassBalancedBuffer.h"
 #include "rtabmap/core/region/storage_policy/ReservoirSamplingBuffer.h"
 #include "rtabmap/core/region/samplers/ReplaySampler.h"
+#include "rtabmap/utilite/UProcessInfo.h"
 
 namespace rtabmap
 {
@@ -85,7 +86,7 @@ namespace rtabmap
     //     return model;
     // }
 
-    void TrainThread::train(std::unordered_map<int, std::pair<cv::Mat, int>> experience)
+    void TrainThread::train(std::unordered_map<int, std::pair<cv::Mat, int>> experience, std::unordered_map<int, std::pair<int, int>> signaturesMoved)
     {
         ULOGGER_DEBUG("Training on experience with size=%d", experience.size());
         this->_mutex.lock();
@@ -100,15 +101,22 @@ namespace rtabmap
             this->_is_training = true;
             this->_mutex.unlock();
         }
-        boost::thread t(boost::bind(&TrainThread::run, this, experience));
+        boost::thread t(boost::bind(&TrainThread::run, this, experience, signaturesMoved));
         // t.join(); //TODO detach?
         t.detach();
     }
 
-    void TrainThread::run(std::unordered_map<int, std::pair<cv::Mat, int>> experience)
+    void TrainThread::run(const std::unordered_map<int, std::pair<cv::Mat, int>> &experience, const std::unordered_map<int, std::pair<int, int>> &signaturesMoved)
     {
         UTimer timer;
         timer.start();
+
+        // STEP 1: UPDATE REPLAY MEMORY IF THERE IS
+        if (this->_replay_memory->buffer()->size() > 0 && !signaturesMoved.empty())
+        {
+            //TODO
+        }
+
         // STEP 1: EXPERIENCE TO VECTORS OF IDS, IMAGES AND LABELS
         std::vector<size_t> ids; // TODO also ids as tensors?
         std::vector<cv::Mat> images;
@@ -122,6 +130,7 @@ namespace rtabmap
         }
 
         // STEP 2: CONVERT VECTORS TO TENSORS
+        ULOGGER_DEBUG("RAM usage before converting to tensor=%ld", UProcessInfo::getMemoryUsage());
         std::vector<torch::Tensor> images_vec(images.size());
         std::vector<torch::Tensor> labels_vec(labels.size());
 
@@ -133,6 +142,9 @@ namespace rtabmap
 
         torch::Tensor images_tensor = torch::cat(images_vec);
         torch::Tensor labels_tensor = torch::stack(labels_vec).to(torch::kLong);
+        ULOGGER_DEBUG("Images_tensor=%ld", (int64_t)images_tensor.storage().nbytes());
+        ULOGGER_DEBUG("Labels_tensor=%ld", (int64_t)labels_tensor.storage().nbytes());
+        ULOGGER_DEBUG("RAM usage after converting to tensor=%ld", UProcessInfo::getMemoryUsage());
 
         // STEP 2: CREATE CURRENT EXPERIENCE DATASET
         // With dataset and dataloader is slower
@@ -140,16 +152,21 @@ namespace rtabmap
         // auto map_dataset = experience_dataset.map(torch::data::transforms::Stack<>());
 
         // STEP 3: MODEL ADAPTATION ON NEW CLASSES
+        ULOGGER_DEBUG("RAM usage before model adaptation=%ld", UProcessInfo::getMemoryUsage());
         this->_model->adapt(labels_tensor);
+        ULOGGER_DEBUG("RAM usage after model adaptation=%ld", UProcessInfo::getMemoryUsage());
 
         // STEP 4: UPDATE OPTIMIZER
+        ULOGGER_DEBUG("RAM usage before making optimizer=%ld", UProcessInfo::getMemoryUsage());
         this->make_optimizer();
+        ULOGGER_DEBUG("RAM usage after making optimizer=%ld", UProcessInfo::getMemoryUsage());
 
         size_t num_classes = this->_model->classifier->linear->options.out_features(); // should be equal to values returned by _unique2 on total dataset (current experience + replay)
 
         // STEP 5: UPDATE LOSS WEIGHTS
         if (this->_weighting_method > 0)
         {
+            ULOGGER_DEBUG("RAM usage before weighting function=%ld", UProcessInfo::getMemoryUsage());
             // compute total labels from current experience and replay memory
             // if use dataset, concat datasets and get labels, use tensor concatenation otherwise
             torch::Tensor total_labels = torch::cat({labels_tensor, this->_replay_memory->buffer()->labels()});
@@ -158,6 +175,7 @@ namespace rtabmap
 
             torch::Tensor weights = this->compute_weights(samples_per_class);
             this->_loss_fn->options.weight(weights);
+            ULOGGER_DEBUG("RAM usage after weighting function=%ld", UProcessInfo::getMemoryUsage());
         }
 
         // STEP 6: EXTRACT FREEZED FEATURES
@@ -178,6 +196,7 @@ namespace rtabmap
         // }
         size_t i = 0;
         size_t j = this->_feature_batch_size;
+        ULOGGER_DEBUG("RAM usage before freezed features extraction=%ld", UProcessInfo::getMemoryUsage());
         while (i < labels_tensor.size(0))
         {
             if (i + this->_feature_batch_size >= labels_tensor.size(0))
@@ -189,23 +208,33 @@ namespace rtabmap
             i += j;
         }
         torch::Tensor freezed_features = torch::cat(freezed_features_vec, 0);
+        ULOGGER_DEBUG("RAM usage after freezed features extraction=%ld", UProcessInfo::getMemoryUsage());
 
         // STEP 7: TRAIN
+        ULOGGER_DEBUG("RAM usage before dataset creation=%ld", UProcessInfo::getMemoryUsage());
         std::shared_ptr<LatentDataset> experience_dataset = std::make_shared<LatentDataset>(ids, freezed_features, labels_tensor);
+
         std::shared_ptr<LatentDataset> total_dataset;
         experience_dataset->concat(this->_replay_memory->buffer(), total_dataset);
         auto map_dataset = (*total_dataset).map(torch::data::transforms::Stack<>());
+        ULOGGER_DEBUG("RAM usage after dataset creation=%ld", UProcessInfo::getMemoryUsage());
 
-        ReplaySampler replay_sampler(experience.size(), this->_replay_memory->buffer()->size().value(), this->_batch_size, this->_replay_memory_batch_size);
-
+        ULOGGER_DEBUG("RAM usage before sampler creation=%ld", UProcessInfo::getMemoryUsage());
+        ReplaySampler replay_sampler(ids.size(), this->_replay_memory->buffer()->size().value(), this->_batch_size, this->_replay_memory_batch_size);
+        ULOGGER_DEBUG("RAM usage after sampler creation=%ld", UProcessInfo::getMemoryUsage());
+        ULOGGER_DEBUG("RAM usage before dataloader creation=%ld", UProcessInfo::getMemoryUsage());
         auto experience_dataloader = torch::data::make_data_loader(map_dataset,
                                                                    replay_sampler,
                                                                    torch::data::DataLoaderOptions(this->_batch_size).drop_last(false).workers(4));
+        ULOGGER_DEBUG("RAM usage after dataloader creation=%ld", UProcessInfo::getMemoryUsage());
+
         float experience_loss = 0.0;
         for (int i = 0; i < this->_epochs; i++)
         {
             ULOGGER_DEBUG("Epoch=%d", i + 1);
+            ULOGGER_DEBUG("RAM usage before loop=%ld", UProcessInfo::getMemoryUsage());
             float epoch_loss = this->loop(experience_dataloader, num_classes, true);
+            ULOGGER_DEBUG("RAM usage after loop=%ld", UProcessInfo::getMemoryUsage());
             ULOGGER_DEBUG("Epoch loss=%f", epoch_loss);
             experience_loss += epoch_loss;
         }
@@ -213,7 +242,9 @@ namespace rtabmap
         ULOGGER_DEBUG("Experience loss=%f", experience_loss);
 
         // STEP 8: UPDATE REPLAY MEMORY
+        ULOGGER_DEBUG("RAM usage before replay memory update=%ld", UProcessInfo::getMemoryUsage());
         this->_replay_memory->update(experience_dataset);
+        ULOGGER_DEBUG("RAM usage after replay memory update=%ld", UProcessInfo::getMemoryUsage());
         ULOGGER_DEBUG("Replay memory updated");
 
         this->_mutex.lock();
@@ -302,7 +333,7 @@ namespace rtabmap
         torch::Tensor data;
         torch::Tensor labels;
         this->_memory->loadReplayMemory(ids, data, labels);
-        if(ids.size() > 0)
+        if (ids.size() > 0)
         {
             std::shared_ptr<LatentDataset> loaded_dataset = std::make_shared<LatentDataset>(ids, data, labels);
             this->_replay_memory->update(loaded_dataset);
@@ -344,13 +375,18 @@ namespace rtabmap
 
                 ULOGGER_DEBUG("Batch size %d", x.size(0));
 
+                ULOGGER_DEBUG("RAM usage before trainable features extraction=%ld", UProcessInfo::getMemoryUsage());
                 torch::Tensor features = this->_model->feature_extractor->extract_trainable_features(x);
                 ULOGGER_DEBUG("Extracted trainable features of shape [%d, %d]", features.size(0), features.size(1));
+                ULOGGER_DEBUG("RAM usage before forward=%ld", UProcessInfo::getMemoryUsage());
                 torch::Tensor predictions = this->_model->classifier->forward(features);
                 ULOGGER_DEBUG("Output predictions of shape [%d, %d]", predictions.size(0), predictions.size(1));
+                ULOGGER_DEBUG("RAM usage before onehot=%ld", UProcessInfo::getMemoryUsage());
                 torch::Tensor one_hot_labels = torch::one_hot(y, num_classes).to(this->_device);
                 ULOGGER_DEBUG("One hot labels of shape [%d, %d]", one_hot_labels.size(0), one_hot_labels.size(1));
+                ULOGGER_DEBUG("RAM usage before loss=%ld", UProcessInfo::getMemoryUsage());
                 torch::Tensor loss = this->_loss_fn->compute(predictions.to(torch::kFloat), one_hot_labels.to(torch::kFloat));
+                ULOGGER_DEBUG("RAM usage before backward=%ld", UProcessInfo::getMemoryUsage());
                 if (train)
                 {
                     this->_optimizer->zero_grad();

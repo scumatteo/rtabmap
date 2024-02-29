@@ -20,6 +20,7 @@ public:
     virtual void resize(size_t new_size) override;
     virtual const at::Tensor &buffer_weights() const;
     virtual void get_ids_in_memory(std::unordered_set<int> &ids_in_memory) const;
+    // virtual void updateLabels(std::unordered_map<int, std::pair<int, int>> &signatures_moved);
 
 private:
     at::Tensor _buffer_weights;

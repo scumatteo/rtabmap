@@ -1442,7 +1442,7 @@ namespace rtabmap
 		}
 	}
 
-	void DBDriver::updateRegions(std::unordered_map<int, int> &signaturesMoved) const
+	void DBDriver::updateRegions(const std::unordered_map<int, std::pair<int, int>> &signaturesMoved) const
 	{
 		if (signaturesMoved.size() > 0)
 		{

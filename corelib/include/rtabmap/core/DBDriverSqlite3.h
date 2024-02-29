@@ -153,7 +153,7 @@ protected:
 	virtual int countRegionsQuery() const;
 	virtual void loadSignaturesByRegionQuery(int regionId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true, const std::set<int> &excludedIds = std::set<int>()) const;
 	virtual void loadSignaturesForRegionByIdQuery(int signatureId, std::list<Signature *> &signatures, bool onlyValid = true, bool loadAll = true) const;
-	virtual void updateRegionsQuery(std::unordered_map<int, int> &signaturesMoved) const;
+	virtual void updateRegionsQuery(const std::unordered_map<int, std::pair<int, int>> &signaturesMoved) const;
 	virtual void updateClusteringQuery(float totalMesh, int totalConnections, int totalRegions) const;
 	virtual void loadClusteringQuery(float &totalMesh, int &totalConnections, int &totalRegions) const;
 	virtual void saveLatentDataQuery(const std::vector<size_t> &ids, const torch::Tensor &data) const;

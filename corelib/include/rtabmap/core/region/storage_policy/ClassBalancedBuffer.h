@@ -21,6 +21,8 @@ namespace rtabmap
         virtual void resize(size_t new_size) override; // TODO expandible?
         virtual const std::unordered_map<size_t, std::shared_ptr<ReservoirSamplingBuffer>> &buffer_groups() const;
         virtual void get_ids_in_memory(std::unordered_set<int> &ids_in_memory) const;
+        
+        // virtual void updateLabels(std::unordered_map<int, std::pair<int, int>> &signatures_moved);
 
     private:
         void _update_buffer();
