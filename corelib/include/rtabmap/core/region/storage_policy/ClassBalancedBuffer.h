@@ -3,8 +3,6 @@
 #ifndef CLASS_BALANCED_BUFFER_H
 #define CLASS_BALANCED_BUFFER_H
 
-#include "rtabmap/core/rtabmap_core_export.h" // DLL export/import defines
-
 #include "rtabmap/core/region/storage_policy/Buffer.h"
 #include "rtabmap/core/region/storage_policy/ReservoirSamplingBuffer.h"
 #include "rtabmap/core/region/datasets/LatentDataset.h"
@@ -12,7 +10,7 @@
 
 namespace rtabmap
 {
-    class RTABMAP_CORE_EXPORT ClassBalancedBuffer : public Buffer
+    class ClassBalancedBuffer : public Buffer
     {
     public:
         ClassBalancedBuffer(size_t max_size);

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "rtabmap/core/rtabmap_core_export.h" // DLL export/import defines
 #include "rtabmap/core/Signature.h"
 #include <pcl/search/kdtree.h>
 #include <pcl/common/eigen.h>
@@ -13,7 +12,7 @@ namespace rtabmap
 
     class Signature;
 
-    class RTABMAP_CORE_EXPORT Region
+    class Region
     {
 
     public:

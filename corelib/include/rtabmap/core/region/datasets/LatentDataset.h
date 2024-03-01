@@ -3,13 +3,12 @@
 #ifndef LATENT_DATASET_H
 #define LATENT_DATASET_H
 
-#include "rtabmap/core/rtabmap_core_export.h" // DLL export/import defines
 #include <torch/torch.h>
 #include <opencv2/opencv.hpp>
 
 namespace rtabmap
 {
-    class RTABMAP_CORE_EXPORT LatentDataset : public torch::data::Dataset<LatentDataset>
+    class LatentDataset : public torch::data::Dataset<LatentDataset>
     {
 
     public:

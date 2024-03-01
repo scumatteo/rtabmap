@@ -44,17 +44,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <opencv2/features2d/features2d.hpp>
 #include <pcl/pcl_config.h>
 
-#include <torch/torch.h>
-#include <torch/script.h>
-#include <thread>
-#include "rtabmap/core/region/clustering/Region.h"
-#include "rtabmap/core/region/models/FeatureExtractor.h"
-#include "rtabmap/core/region/models/IncrementalLinear.h"
-#include "rtabmap/core/region/models/Model.h"
-#include "rtabmap/core/region/TrainThread.h"
-
-#include "torch/torch.h"
-
 namespace rtabmap {
 
 class Signature;
@@ -71,10 +60,7 @@ class Stereo;
 class OccupancyGrid;
 class MarkerDetector;
 class Region;
-class FeatureExtractor;
-class IncrementalLinear;
-class Model;
-class TrainThread;
+class ContinualLearning;
 
 class RTABMAP_CORE_EXPORT Memory
 {
@@ -293,36 +279,40 @@ public:
 	void setRegionToSignature(int id, int regionId);
 	void assignRegion();
 
-	inline int experienceSize() const { return this->_experienceSize; }
-	inline const std::unordered_map<int, std::pair<cv::Mat, int>> &currentExperience() const { return this->_currentExperience; }
-	void addInExperience(int id, const cv::Mat &image, int regionId);
+	
+
+	void getIdsInRAM(std::set<int> &ids) const;
+
+	// void addInExperience(int id, const cv::Mat &image, int regionId);
+	void addInExperience(int id, int regionId);
 	void updateInExperience(int id, int regionId);
 	void updateSignaturesMoved(const std::unordered_map<int, std::pair<int, int>> &signaturesMoved);
-	inline const std::unordered_map<int, std::pair<int, int>> &signaturesMoved() const { return this->_signaturesMoved; }
+	// inline const std::unordered_map<int, std::pair<int, int>> &signaturesMoved() const { return this->_signaturesMoved; }
 	inline void clearSignaturesMoved() { this->_signaturesMoved.clear(); }
-	inline void clearCurrentExperience() { this->_currentExperience.clear(); }
-	void getIdsInRAM(std::set<int> &ids) const;
-	inline int roiX() const { return this->_roiX; }
-	inline int roiY() const { return this->_roiY; }
-	inline int roiWidth() const { return this->_roiWidth; }
-	inline int roiHeight() const { return this->_roiHeight; }
+	
+	
+	// inline int roiX() const { return this->_roiX; }
+	// inline int roiY() const { return this->_roiY; }
+	// inline int roiWidth() const { return this->_roiWidth; }
+	// inline int roiHeight() const { return this->_roiHeight; }
 	void setCurrentImage();
-	inline const cv::Mat &currentImage() const { return this->_currentImage; }
+	// inline const cv::Mat &currentImage() const { return this->_currentImage; }
+	const std::unique_ptr<ContinualLearning> &learning() const;
+	int experienceSize() const;
+	size_t currentExperienceSize() const;
 	void predict();
 	void train() const;
 	void checkModelUpdate();
+	void clearCurrentExperience();
 
-	void sortRegionsProbabilities(const std::vector<float> &predictions, std::vector<std::pair<float, int>> &indices) const;
-	inline int topK() const { return this->_topK; }
-	inline const std::set<int> &topKRegions() const { return this->_topKRegions; } 
-	inline void insertInTopKRegions(int id) { this->_topKRegions.insert(id); }
-	inline void clearTopKRegions() { this->_topKRegions.clear(); }
-	std::set<int> reactivateTopKRegions(double & timeDbAccess);
-	void saveLatentData(const std::vector<size_t> &ids, const torch::Tensor &data) const;
-	void saveReplayMemory(const std::vector<size_t> &ids, 
-						  const torch::Tensor &data, 
-						  const std::unordered_set<int> &idsInReplayMemory) const;
-	void loadReplayMemory(std::vector<size_t> &ids, torch::Tensor &data, torch::Tensor &labels) const;
+	// inline int topK() const { return this->_topK; }
+	const std::set<int> &topKRegions() const;
+	void reactivateTopKRegions(std::set<int> &reactivatedIds, double & timeDbAccess);
+	// void saveLatentData(const std::vector<size_t> &ids, const torch::Tensor &data) const;
+	// void saveReplayMemory(const std::vector<size_t> &ids, 
+	// 					  const torch::Tensor &data, 
+	// 					  const std::unordered_set<int> &idsInReplayMemory) const;
+	// void loadReplayMemory(std::vector<size_t> &ids, torch::Tensor &data, torch::Tensor &labels) const;
 
 private:
 	void preUpdate();
@@ -473,34 +463,7 @@ private:
 	int _desiredAverageCardinality;
 	float _scattering1Const;
 
-	//continual
-	int _experienceSize;
-
-	int _roiX;
-	int _roiY;
-	int _roiWidth;
-	int _roiHeight;
-	int _targetWidth;
-    int _targetHeight;
-	cv::Mat _currentImage; //current image for experience
-	std::unordered_map<int, std::pair<cv::Mat, int>> _currentExperience;
-
-	std::string _modelPath;
-	std::string _checkpointPath;
-
-	int _deviceType;
-	torch::DeviceType _device;
-
-	//for training
-	std::unique_ptr<TrainThread> _trainThread;
-	Model _model;
-
-	//for inference
-	int _topK;
-	std::set<int> _topKRegions;
-	at::Tensor _regionProbabilities;
-	float _alpha;
-
+	std::unique_ptr<ContinualLearning> _learning;
 	
 };
 

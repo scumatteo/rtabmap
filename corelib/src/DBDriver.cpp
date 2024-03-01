@@ -1466,18 +1466,8 @@ namespace rtabmap
 		_dbSafeAccessMutex.unlock();
 	}
 
-	void DBDriver::saveLatentData(const std::vector<size_t> &ids, const torch::Tensor &data) const
-	{
-		if (ids.size() > 0)
-		{
-			_dbSafeAccessMutex.lock();
-			this->saveLatentDataQuery(ids, data);
-			_dbSafeAccessMutex.unlock();
-		}
-	}
-
-	void DBDriver::saveReplayMemory(const std::vector<size_t> &ids, 
-									const torch::Tensor &data, 
+	void DBDriver::saveReplayMemory(const std::vector<size_t> &ids,
+									const std::vector<std::vector<char>> &data,
 									const std::unordered_set<int> &idsInReplayMemory) const
 	{
 		if (ids.size() > 0)
@@ -1487,8 +1477,7 @@ namespace rtabmap
 			_dbSafeAccessMutex.unlock();
 		}
 	}
-
-	void DBDriver::loadReplayMemory(std::vector<size_t> &ids, torch::Tensor &data, torch::Tensor &labels) const
+	void DBDriver::loadReplayMemory(std::vector<size_t> &ids, std::vector<std::vector<char>> &data, std::vector<int> &labels) const
 	{
 		_dbSafeAccessMutex.lock();
 		this->loadReplayMemoryQuery(ids, data, labels);

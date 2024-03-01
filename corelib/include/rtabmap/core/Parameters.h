@@ -874,8 +874,8 @@ class RTABMAP_CORE_EXPORT Parameters
     RTABMAP_PARAM(Region, DesiredAverageCardinality,        int,    600,    "Desired average cardinality for a region (cluster).");
     RTABMAP_PARAM(Region, MeshShapeFactor,                  float,  1.0,    "Mesh shape factor for clustering.");
     RTABMAP_PARAM(Region, RadiusUpperBound,                 float,  100.0,  "Radius upper bound for a region (cluster).");
-    RTABMAP_PARAM(Region, TopK,                             int,    3,      "Top-k regions to retrieve.");
 
+    RTABMAP_PARAM(Continual, TopK,                          int,    3,      "Top-k regions to retrieve.");
     RTABMAP_PARAM_STR(Continual, ModelPath,                 "",             "Path of the initial model to load.");
     RTABMAP_PARAM_STR(Continual, CheckpointPath,            "",             "Path of the checkpoint model to load.");
     RTABMAP_PARAM(Continual, Device,                        int,    0,      "0 for cpu, 1 for gpu.");

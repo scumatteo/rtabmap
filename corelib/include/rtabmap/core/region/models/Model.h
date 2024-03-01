@@ -3,8 +3,6 @@
 #ifndef MODEL_H
 #define MODEL_H
 
-#include "rtabmap/core/rtabmap_core_export.h" // DLL export/import defines
-
 #include <torch/torch.h>
 #include <torch/script.h>
 #include "rtabmap/core/region/models/FeatureExtractor.h"
@@ -13,7 +11,7 @@
 namespace rtabmap
 {
 
-    struct RTABMAP_CORE_EXPORT ModelImpl : torch::nn::Module
+    struct ModelImpl : torch::nn::Module
     {
 
         std::string model_path;

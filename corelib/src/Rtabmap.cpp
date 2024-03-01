@@ -2550,7 +2550,8 @@ namespace rtabmap
 				// std::list<int> regionsToRetrieve = std::list<int>(_memory->topKRegions().begin(), _memory->topKRegions().end());
 				// UTimer regionTimer;
 				// std::set<int> reactivatedRegionsIds = _memory->reactivateSignaturesByRegions(regionsToRetrieve, timeRetrievalDbAccess, excludedIds);
-				std::set<int> reactivatedRegionsIds = _memory->reactivateTopKRegions(timeRetrievalDbAccess);
+				std::set<int> reactivatedRegionsIds;
+				_memory->reactivateTopKRegions(reactivatedRegionsIds, timeRetrievalDbAccess);
 				ULOGGER_DEBUG("Reactivated signatures by region: %d", reactivatedRegionsIds.size());
 			}
 
@@ -4245,12 +4246,12 @@ namespace rtabmap
 				UINFO("Ignoring location %d because invalid!", signature->id());
 				signaturesRemoved.push_back(signature->id());
 
-				_memory->addInExperience(signature->id(), _memory->currentImage(), signature->regionId());
+				_memory->addInExperience(signature->id(), signature->regionId());
 				_memory->deleteLocation(signature->id(), false, 0, true);
 			}
 			else
 			{
-				_memory->addInExperience(signature->id(), _memory->currentImage(), signature->regionId());
+				_memory->addInExperience(signature->id(), signature->regionId());
 				_memory->saveLocationData(signature->id());
 			}
 		}
@@ -4276,7 +4277,7 @@ namespace rtabmap
 		}
 
 		// START TRAINING
-		if (_memory->currentExperience().size() >= _memory->experienceSize())
+		if (_memory->currentExperienceSize() >= _memory->experienceSize())
 		{
 			ULOGGER_DEBUG("START TRAINING!");
 			this->_memory->train();

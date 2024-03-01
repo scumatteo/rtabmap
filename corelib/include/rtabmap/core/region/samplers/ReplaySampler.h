@@ -3,14 +3,12 @@
 #ifndef REPLAY_SAMPLER_H
 #define REPLAY_SAMPLER_H
 
-#include "rtabmap/core/rtabmap_core_export.h" // DLL export/import defines
-
 #include <torch/torch.h>
 
 namespace rtabmap
 {
 
-    class RTABMAP_CORE_EXPORT ReplaySampler : public torch::data::samplers::Sampler<>
+    class ReplaySampler : public torch::data::samplers::Sampler<>
     {
     public:
         explicit ReplaySampler(size_t current_experience_size,

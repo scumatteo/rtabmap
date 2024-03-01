@@ -3,15 +3,13 @@
 #ifndef INCREMENTAL_LINEAR_H
 #define INCREMENTAL_LINEAR_H
 
-#include "rtabmap/core/rtabmap_core_export.h" // DLL export/import defines
-
 #include <torch/torch.h>
 #include <torch/script.h>
 
 namespace rtabmap
 {
     // Load jit script for feature extractor
-    struct RTABMAP_CORE_EXPORT IncrementalLinearImpl : torch::nn::Module
+    struct IncrementalLinearImpl : torch::nn::Module
     {
 
         torch::nn::Linear linear;

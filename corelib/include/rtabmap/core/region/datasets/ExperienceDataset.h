@@ -3,14 +3,13 @@
 #ifndef EXPERIENCE_DATASET_H
 #define EXPERIENCE_DATASET_H
 
-#include "rtabmap/core/rtabmap_core_export.h" // DLL export/import defines
 #include <torch/torch.h>
 #include <opencv2/opencv.hpp>
 
 namespace rtabmap
 {
 
-    class RTABMAP_CORE_EXPORT ExperienceDataset : public torch::data::Dataset<ExperienceDataset>
+    class ExperienceDataset : public torch::data::Dataset<ExperienceDataset>
     {
     public:
         ExperienceDataset(const std::vector<size_t> &ids,

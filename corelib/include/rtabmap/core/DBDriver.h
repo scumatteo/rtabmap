@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <list>
 #include <map>
 #include <set>
+#include <unordered_set>
 #include <opencv2/core/core.hpp>
 #include "rtabmap/utilite/UMutex.h"
 #include "rtabmap/utilite/UThreadNode.h"
@@ -44,7 +45,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <rtabmap/core/Transform.h>
 #include <rtabmap/core/Link.h>
 
-#include <torch/torch.h>
 
 namespace rtabmap {
 
@@ -192,13 +192,10 @@ public:
 	void updateRegions(const std::unordered_map<int, std::pair<int, int>> &signaturesMoved) const;
 	void updateClustering(float totalMesh, int totalConnections, int totalRegions) const;
 	void loadClustering(float &totalMesh, int &totalConnections, int &totalRegions) const;
-	void saveLatentData(const std::vector<size_t> &ids, const torch::Tensor &data) const;
 	void saveReplayMemory(const std::vector<size_t> &ids, 
-						  const torch::Tensor &data, 
+						  const std::vector<std::vector<char>> &data, 
 						  const std::unordered_set<int> &idsInReplayMemory) const;
-	void loadReplayMemory(std::vector<size_t> &ids, torch::Tensor &data, torch::Tensor &labels) const;
-	// void loadLatentDataQuery(const std::list<int> &ids, torch::Tensor &data) const;
-	// void saveReplayBuffer(const std::vector<size_t> &region_ids, const std::vector<std::vector<size_t>> &elements) const;
+	void loadReplayMemory(std::vector<size_t> &ids, std::vector<std::vector<char>> &data, std::vector<int> &labels) const;
 
 protected:
 	DBDriver(const ParametersMap & parameters = ParametersMap());
@@ -308,13 +305,10 @@ protected:
 	virtual void updateRegionsQuery(const std::unordered_map<int, std::pair<int, int>> &signaturesMoved) const = 0;
 	virtual void updateClusteringQuery(float totalMesh, int totalConnections, int totalRegions) const = 0;
 	virtual void loadClusteringQuery(float &totalMesh, int &totalConnections, int &totalRegions) const = 0;
-	virtual void saveLatentDataQuery(const std::vector<size_t> &ids, const torch::Tensor &data) const = 0;
 	virtual void saveReplayMemoryQuery(const std::vector<size_t> &ids, 
-									   const torch::Tensor &data, 
-									   const std::unordered_set<int> &idsInReplayMemory) const = 0;
-	virtual void loadReplayMemoryQuery(std::vector<size_t> &ids, torch::Tensor &data, torch::Tensor &labels) const = 0;
-	// virtual void loadLatentDataQuery(const std::list<int> &ids, torch::Tensor &data) const = 0;
-	// virtual void saveReplayBufferQuery(const std::vector<size_t> &region_ids, const std::vector<std::vector<size_t>> &elements) const = 0;
+						  const std::vector<std::vector<char>> &data, 
+						  const std::unordered_set<int> &idsInReplayMemory) const = 0;
+	virtual void loadReplayMemoryQuery(std::vector<size_t> &ids, std::vector<std::vector<char>> &data, std::vector<int> &labels) const = 0;
 
 private:
 	//non-abstract methods

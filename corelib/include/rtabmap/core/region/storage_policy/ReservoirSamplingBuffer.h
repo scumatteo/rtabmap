@@ -3,15 +3,13 @@
 #ifndef RESERVOIR_SAMPLING_BUFFER_H
 #define RESERVOIR_SAMPLING_BUFFER_H
 
-#include "rtabmap/core/rtabmap_core_export.h" // DLL export/import defines
-
 #include <torch/torch.h>
 #include "rtabmap/core/region/storage_policy/Buffer.h"
 #include "rtabmap/core/region/datasets/LatentDataset.h"
 
 namespace rtabmap
 {
-class RTABMAP_CORE_EXPORT ReservoirSamplingBuffer : public Buffer
+class ReservoirSamplingBuffer : public Buffer
 {
 public:
     ReservoirSamplingBuffer(size_t max_size);

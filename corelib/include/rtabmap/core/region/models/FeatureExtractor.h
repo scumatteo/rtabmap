@@ -3,8 +3,6 @@
 #ifndef FEATURE_EXTRACTOR_H
 #define FEATURE_EXTRACTOR_H
 
-#include "rtabmap/core/rtabmap_core_export.h" // DLL export/import defines
-
 #include <torch/torch.h>
 #include <torch/script.h>
 #include "rtabmap/core/region/models/FreezedPart.h"
@@ -12,7 +10,7 @@
 
 namespace rtabmap
 {
-    struct RTABMAP_CORE_EXPORT FeatureExtractorImpl : torch::nn::Module
+    struct FeatureExtractorImpl : torch::nn::Module
     {
 
         FeatureExtractorImpl();

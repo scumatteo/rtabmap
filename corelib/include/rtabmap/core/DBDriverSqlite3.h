@@ -156,12 +156,10 @@ protected:
 	virtual void updateRegionsQuery(const std::unordered_map<int, std::pair<int, int>> &signaturesMoved) const;
 	virtual void updateClusteringQuery(float totalMesh, int totalConnections, int totalRegions) const;
 	virtual void loadClusteringQuery(float &totalMesh, int &totalConnections, int &totalRegions) const;
-	virtual void saveLatentDataQuery(const std::vector<size_t> &ids, const torch::Tensor &data) const;
 	virtual void saveReplayMemoryQuery(const std::vector<size_t> &ids, 
-									   const torch::Tensor &data, 
-									   const std::unordered_set<int> &idsInReplayMemory) const;
-	virtual void loadReplayMemoryQuery(std::vector<size_t> &ids, torch::Tensor &data, torch::Tensor &labels) const;
-	// virtual void loadLatentDataQuery(const std::list<int> &ids, torch::Tensor &data) const;
+						  const std::vector<std::vector<char>> &data, 
+						  const std::unordered_set<int> &idsInReplayMemory) const;
+	virtual void loadReplayMemoryQuery(std::vector<size_t> &ids, std::vector<std::vector<char>> &data, std::vector<int> &labels) const;
 
 private:
 	std::string queryStepNode() const;

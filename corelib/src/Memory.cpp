@@ -64,12 +64,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <rtabmap/core/MarkerDetector.h>
 #include <opencv2/imgproc/types_c.h>
 
-#include "rtabmap/core/region/utils.h"
 #include <iostream>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <set>
+
+#ifdef RTABMAP_TORCH
+#include "rtabmap/core/region/clustering/Region.h"
+#include "rtabmap/core/region/ContinualLearning.h"
+#endif
+
 
 namespace rtabmap
 {
@@ -142,19 +147,7 @@ namespace rtabmap
 													  _meshShapeFactor(Parameters::defaultRegionMeshShapeFactor()),
 													  _clusteringThreshold(0),
 													  _defaultScattering(0),
-													  _scattering1Const(0),
-													  _topK(Parameters::defaultRegionTopK()),
-													  _modelPath(Parameters::defaultContinualModelPath()),
-													  _checkpointPath(Parameters::defaultContinualCheckpointPath()),
-													  _deviceType(Parameters::defaultContinualDevice()),
-													  _experienceSize(Parameters::defaultContinualExperienceSize()),
-													  _alpha(Parameters::defaultContinualAlpha()),
-													  _roiX(Parameters::defaultContinualRoiX()),
-													  _roiY(Parameters::defaultContinualRoiY()),
-													  _roiWidth(Parameters::defaultContinualRoiWidth()),
-													  _roiHeight(Parameters::defaultContinualRoiHeight()),
-													  _targetWidth(Parameters::defaultContinualTargetWidth()),
-													  _targetHeight(Parameters::defaultContinualTargetHeight())
+													  _scattering1Const(0)
 
 	{
 		_feature2D = Feature2D::create(parameters);
@@ -2409,7 +2402,7 @@ namespace rtabmap
 				 iter != weightAgeIdMap.end();
 				 ++iter)
 			{
-				if (this->_topKRegions.find(iter->second->regionId()) == this->_topKRegions.end() && iter->second->regionId() != this->_currentRegionId) // not signature of topk regions and not of current region
+				if (this->_learning->topKRegions().find(iter->second->regionId()) == this->_learning->topKRegions().end() && iter->second->regionId() != this->_currentRegionId) // not signature of topk regions and not of current region
 				{
 					if (!recentWmImmunized)
 					{
@@ -6896,7 +6889,7 @@ namespace rtabmap
 			for (const auto &id_region : signaturesMoved)
 			{
 				// this->addIdInExperience(id_region.first);
-				this->updateInExperience(id_region.first, id_region.second.second);
+				this->_learning->updateInExperience(id_region.first, id_region.second.second);
 			}
 
 			if (signaturesMoved.count(this->_lastSignature->id()))
@@ -6929,35 +6922,26 @@ namespace rtabmap
 		ULOGGER_DEBUG("Time for clustering=%fs", timer.ticks());
 	}
 
-	void Memory::addInExperience(int id, const cv::Mat &image, int regionId)
+	void Memory::addInExperience(int id, int regionId)
 	{
-		if (this->_currentExperience.count(id))
-		{
-			ULOGGER_DEBUG("Trying to add in experience id %d already present. Use updateInExperience instead.", id);
-		}
-		else
-		{
-			this->_currentExperience.insert({id, {image, regionId}});
-		}
+		this->_learning->addInExperience(id, regionId);
 	}
 
 	void Memory::updateInExperience(int id, int regionId)
 	{
-		if (this->_currentExperience.count(id))
-		{
-			this->_currentExperience[id].second = regionId;
-		}
-		else
-		{
-			ULOGGER_DEBUG("Trying to update in experience id %d not present. Use addIdInExperience instead.", id);
-		}
+		this->_learning->updateInExperience(id, regionId);
+	}
+
+	void Memory::train() const
+	{
+		this->_learning->train(this->_signaturesMoved);
 	}
 
 	void Memory::updateSignaturesMoved(const std::unordered_map<int, std::pair<int, int>> &signaturesMoved)
 	{
 		for (const auto &idRegion : signaturesMoved)
 		{
-			if (!this->_currentExperience.count(idRegion.first))
+			if (!this->_learning->currentExperience().count(idRegion.first))
 			{
 				if (this->_signaturesMoved.count(idRegion.first))
 				{
@@ -7084,53 +7068,11 @@ namespace rtabmap
 		Parameters::parse(parameters, Parameters::kRegionDesiredAverageCardinality(), _desiredAverageCardinality);
 		Parameters::parse(parameters, Parameters::kRegionMeshShapeFactor(), _meshShapeFactor);
 		_scattering1Const = _desiredAverageCardinality * sqrt(_desiredAverageCardinality);
-
-		Parameters::parse(parameters, Parameters::kRegionTopK(), _topK);
-
-		Parameters::parse(parameters, Parameters::kContinualModelPath(), _modelPath);
-		Parameters::parse(parameters, Parameters::kContinualCheckpointPath(), _checkpointPath);
-		Parameters::parse(parameters, Parameters::kContinualDevice(), _deviceType);
-		Parameters::parse(parameters, Parameters::kContinualExperienceSize(), _experienceSize);
-		Parameters::parse(parameters, Parameters::kContinualAlpha(), _alpha);
-		Parameters::parse(parameters, Parameters::kContinualRoiX(), _roiX);
-		Parameters::parse(parameters, Parameters::kContinualRoiY(), _roiY);
-		Parameters::parse(parameters, Parameters::kContinualRoiWidth(), _roiWidth);
-		Parameters::parse(parameters, Parameters::kContinualRoiHeight(), _roiHeight);
-		Parameters::parse(parameters, Parameters::kContinualTargetWidth(), _targetWidth);
-		Parameters::parse(parameters, Parameters::kContinualTargetHeight(), _targetHeight);
 	}
 
 	void Memory::initRegions(const ParametersMap &parameters)
 	{
-		this->_device = this->_deviceType && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-
-		FeatureExtractor featureExtractor;
-		IncrementalLinear classifier(512, this->_regionCounter);
-		//_regionCounter corresponds to the number of classes
-		if (this->_regionCounter == 0) // no checkpoint yet, load initial model
-		{
-			this->_model = Model(featureExtractor, classifier, _modelPath);
-		}
-		else if (this->_regionCounter > 0)
-		{
-			this->_model = Model(featureExtractor, classifier, _checkpointPath);
-		}
-		else
-		{
-			ULOGGER_ERROR("region counter < 0 should never happen!");
-		}
-
-		this->_model->eval();
-		this->_model->to(this->_device);
-
-		Model new_model = this->_model->clone();
-		this->_trainThread = std::make_unique<TrainThread>(this,
-														   new_model,
-														   parameters,
-														   static_cast<int64_t>(_targetWidth),
-														   static_cast<int64_t>(_targetHeight),
-														   _checkpointPath,
-														   _device);
+		this->_learning = std::make_unique<ContinualLearning>(_dbDriver, _regionCounter, parameters);
 	}
 
 	void Memory::getIdsInRAM(std::set<int> &ids) const
@@ -7145,79 +7087,70 @@ namespace rtabmap
 		}
 	}
 
-	void Memory::train() const
-	{
-		this->_trainThread->train(this->_currentExperience, this->_signaturesMoved);
-	}
+	// void Memory::train() const
+	// {
+	// 	this->_trainThread->train(this->_currentExperience, this->_signaturesMoved);
+	// }
 
-	void Memory::checkModelUpdate()
-	{
-		if (!this->_trainThread->is_training() && this->_trainThread->last_training_end())
-		{
-			this->_model = this->_trainThread->model();
-			ULOGGER_DEBUG("Updating model");
-		}
-	}
+	// void Memory::checkModelUpdate()
+	// {
+	// 	if (!this->_trainThread->is_training() && this->_trainThread->last_training_end())
+	// 	{
+	// 		this->_model = this->_trainThread->model();
+	// 		ULOGGER_DEBUG("Updating model");
+	// 	}
+	// }
 
-	void Memory::sortRegionsProbabilities(const std::vector<float> &predictions, std::vector<std::pair<float, int>> &indices) const
-	{
-		for (int i = 0; i < predictions.size(); i++)
-		{
-			indices.push_back({predictions[i], i});
-		}
+	// void Memory::sortRegionsProbabilities(const std::vector<float> &predictions, std::vector<std::pair<float, int>> &indices) const
+	// {
+	// 	for (int i = 0; i < predictions.size(); i++)
+	// 	{
+	// 		indices.push_back({predictions[i], i});
+	// 	}
 
-		std::sort(indices.rbegin(), indices.rend());
-	}
+	// 	std::sort(indices.rbegin(), indices.rend());
+	// }
 
 	void Memory::setCurrentImage()
 	{
-		this->_currentImage = this->_lastSignature->sensorData().imageRaw().clone();
-		ULOGGER_DEBUG("Current image is %s empty", this->_currentImage.empty() ? "" : "not");
-		if (this->_roiWidth != 0 && this->_roiHeight != 0)
-		{
-			cv::Rect roi(this->_roiX, this->_roiY, this->_roiWidth, this->_roiHeight);
-			this->_currentImage = this->_currentImage(roi);
-		}
-		ULOGGER_DEBUG("Cropped image size: %d %d", this->_currentImage.cols, this->_currentImage.rows);
-		cv::resize(this->_currentImage, this->_currentImage, cv::Size(this->_targetWidth, this->_targetHeight));
-		ULOGGER_DEBUG("Resized image size: %d %d", this->_currentImage.cols, this->_currentImage.rows);
+		this->_learning->setCurrentImage(this->_lastSignature);
 	}
 
-	void Memory::predict()
-	{
-		ULOGGER_DEBUG("Model trained: %s", this->_model->is_trained() ? "true" : "false");
-		if (this->_model->is_trained()) // always called when output size is at least 1
-		{
-			torch::NoGradGuard no_grad;
-			at::Tensor input = image_to_tensor(this->_currentImage, this->_targetWidth, this->_targetHeight);
-			input = input.to(this->_device);
-			at::Tensor output = this->_model->forward(input);
-			output = torch::squeeze(output, 0).detach().cpu();
-			if (this->_regionProbabilities.size(0) == 0)
-			{
-			}
-			else if (output.size(0) == this->_regionProbabilities.size(0))
-			{
-				output = this->_alpha * output + (1.0 - this->_alpha) * this->_regionProbabilities;
-			}
-			else // new neurons, output.size(0) > _regionProbabilities.size(0)
-			{
-				output.slice(0, 0, this->_regionProbabilities.size(0)) = this->_alpha * output.slice(0, 0, this->_regionProbabilities.size(0)) + (1.0 - this->_alpha) * this->_regionProbabilities;
-			}
+	// void Memory::predict()
+	// {
+	// 	ULOGGER_DEBUG("Model trained: %s", this->_model->is_trained() ? "true" : "false");
+	// 	if (this->_model->is_trained()) // always called when output size is at least 1
+	// 	{
+	// 		torch::NoGradGuard no_grad;
+	// 		at::Tensor input = image_to_tensor(this->_currentImage, this->_targetWidth, this->_targetHeight);
+	// 		input = input.to(this->_device);
+	// 		at::Tensor output = this->_model->forward(input);
+	// 		output = torch::squeeze(output, 0).detach().cpu();
+	// 		if (this->_regionProbabilities.size(0) == 0)
+	// 		{
+	// 		}
+	// 		else if (output.size(0) == this->_regionProbabilities.size(0))
+	// 		{
+	// 			output = this->_alpha * output + (1.0 - this->_alpha) * this->_regionProbabilities;
+	// 		}
+	// 		else // new neurons, output.size(0) > _regionProbabilities.size(0)
+	// 		{
+	// 			output.slice(0, 0, this->_regionProbabilities.size(0)) = this->_alpha * output.slice(0, 0, this->_regionProbabilities.size(0)) + (1.0 - this->_alpha) * this->_regionProbabilities;
+	// 		}
 
-			this->_regionProbabilities = output;
-			std::tuple<at::Tensor, at::Tensor> sortedProbabilites = at::sort(this->_regionProbabilities, c10::optional<bool>(false), -1, true);
-			at::Tensor sortedRegionsTensor = std::get<1>(sortedProbabilites).slice(0, 0, this->_topK + 1);
-			std::vector<int> sortedRegions(sortedRegionsTensor.data_ptr<int64_t>(), sortedRegionsTensor.data_ptr<int64_t>() + sortedRegionsTensor.numel());
-			for (size_t i = 0; i < sortedRegions.size(); i++)
-			{
-				ULOGGER_DEBUG("Top-%d prediction=%d", i + 1, sortedRegions[i]);
-			}
-			this->_topKRegions = std::set<int>(sortedRegions.begin(), sortedRegions.end());
-		}
-	}
+	// 		this->_regionProbabilities = output;
+	// 		std::tuple<at::Tensor, at::Tensor> sortedProbabilites = at::sort(this->_regionProbabilities, c10::optional<bool>(false), -1, true);
+	// 		at::Tensor sortedRegionsTensor = std::get<1>(sortedProbabilites).slice(0, 0, this->_topK + 1);
+	// 		std::vector<int> sortedRegions(sortedRegionsTensor.data_ptr<int64_t>(), sortedRegionsTensor.data_ptr<int64_t>() + sortedRegionsTensor.numel());
+	// 		for (size_t i = 0; i < sortedRegions.size(); i++)
+	// 		{
+	// 			ULOGGER_DEBUG("Top-%d prediction=%d", i + 1, sortedRegions[i]);
+	// 		}
+	// 		this->_topKRegions = std::set<int>(sortedRegions.begin(), sortedRegions.end());
+	// 	}
+	// }
 
-	std::set<int> Memory::reactivateTopKRegions(double &timeDbAccess)
+	void Memory::reactivateTopKRegions(std::set<int> &reactivatedIds, double &timeDbAccess)
 	{
 		UDEBUG("");
 		UTimer timer;
@@ -7227,7 +7160,7 @@ namespace rtabmap
 		{
 			std::set<int> excludedIds;
 			this->getIdsInRAM(excludedIds);
-			for (std::set<int>::const_iterator iter = this->_topKRegions.begin(); iter != this->_topKRegions.end(); ++iter)
+			for (std::set<int>::const_iterator iter = this->_learning->topKRegions().begin(); iter != this->_learning->topKRegions().end(); ++iter)
 			{
 				ULOGGER_DEBUG("Loading region %d", (*iter));
 				_dbDriver->loadSignaturesByRegion((*iter), reactivatedSigns, true, true, excludedIds);
@@ -7281,33 +7214,43 @@ namespace rtabmap
 		}
 		this->enableWordsRef(idsLoaded);
 		UDEBUG("Time for reactivate signatures by region = %fs", timer.ticks());
-		return std::set<int>(idsLoaded.begin(), idsLoaded.end());
+		return reactivatedIds.insert(idsLoaded.begin(), idsLoaded.end());
 	}
 
-	void Memory::saveLatentData(const std::vector<size_t> &ids, const torch::Tensor &data) const
-	{
-		if (_dbDriver)
-		{
-			_dbDriver->saveLatentData(ids, data);
-		}
-	}
+	const std::unique_ptr<ContinualLearning> &Memory::learning() const { return this->_learning; }
+	int Memory::experienceSize() const { return this->_learning->experienceSize(); }
+	size_t Memory::currentExperienceSize() const { return this->_learning->currentExperienceSize(); }
+	void Memory::predict() {this->_learning->predict(); }
+	void Memory::checkModelUpdate() { this->_learning->checkModelUpdate(); }
+	void Memory::clearCurrentExperience() { this->_learning->clearCurrentExperience(); }
 
-	void Memory::saveReplayMemory(const std::vector<size_t> &ids,
-								  const torch::Tensor &data,
-								  const std::unordered_set<int> &idsInReplayMemory) const
-	{
-		if (_dbDriver)
-		{
-			_dbDriver->saveReplayMemory(ids, data, idsInReplayMemory);
-		}
-	}
+	// inline int topK() const { return this->_topK; }
+	const std::set<int> &Memory::topKRegions() const { return this->_learning->topKRegions(); } 
 
-	void Memory::loadReplayMemory(std::vector<size_t> &ids, torch::Tensor &data, torch::Tensor &labels) const
-	{
-		if (_dbDriver)
-		{
-			_dbDriver->loadReplayMemory(ids, data, labels);
-		}
-	}
+	// void Memory::saveLatentData(const std::vector<size_t> &ids, const torch::Tensor &data) const
+	// {
+	// 	if (_dbDriver)
+	// 	{
+	// 		_dbDriver->saveLatentData(ids, data);
+	// 	}
+	// }
+
+	// void Memory::saveReplayMemory(const std::vector<size_t> &ids,
+	// 							  const torch::Tensor &data,
+	// 							  const std::unordered_set<int> &idsInReplayMemory) const
+	// {
+	// 	if (_dbDriver)
+	// 	{
+	// 		_dbDriver->saveReplayMemory(ids, data, idsInReplayMemory);
+	// 	}
+	// }
+
+	// void Memory::loadReplayMemory(std::vector<size_t> &ids, torch::Tensor &data, torch::Tensor &labels) const
+	// {
+	// 	if (_dbDriver)
+	// 	{
+	// 		_dbDriver->loadReplayMemory(ids, data, labels);
+	// 	}
+	// }
 
 } // namespace rtabmap

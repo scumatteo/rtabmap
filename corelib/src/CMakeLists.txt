@@ -129,7 +129,7 @@ SET(SRC_FILES
     opencv/five-point.cpp
 
 	#regions
-	region/clustering/Region.cpp
+	
 	# region/models/BasicBlock.cpp
 	# region/models/FeatureExtractor.cpp
 	# region/models/FreezedPart.cpp
@@ -200,13 +200,14 @@ ELSE()
 ENDIF()
 
 IF(TORCH_FOUND)
-	SET(PUBLIC_LIBRARIES
-		${PUBLIC_LIBRARIES}
+	SET(LIBRARIES
+		${LIBRARIES}
 		${TORCH_LIBRARIES}
 	)
 	SET(SRC_FILES
 		${SRC_FILES}
 		superpoint_torch/SuperPoint.cc
+		region/clustering/Region.cpp
 		region/datasets/ExperienceDataset.cpp
 		region/datasets/LatentDataset.cpp
 		region/losses/CrossEntropyLoss.cpp
@@ -221,14 +222,15 @@ IF(TORCH_FOUND)
 		region/storage_policy/Buffer.cpp
 		region/storage_policy/ClassBalancedBuffer.cpp
 		region/storage_policy/ReservoirSamplingBuffer.cpp
+		region/ContinualLearning.cpp
 		region/TrainThread.cpp
 		region/utils.cpp
 	)
-	 SET(PUBLIC_INCLUDE_DIRS
+	 SET(INCLUDE_DIRS
 	    ${TORCH_INCLUDE_DIRS}
 	    ${CMAKE_CURRENT_SOURCE_DIR}/superpoint_torch
-		${CMAKE_CURRENT_SOURCE_DIR}/region/models
-		${PUBLIC_INCLUDE_DIRS}
+		${CMAKE_CURRENT_SOURCE_DIR}/region
+		${INCLUDE_DIRS}
 	)
 ENDIF(TORCH_FOUND)
 

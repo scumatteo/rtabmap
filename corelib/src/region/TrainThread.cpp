@@ -13,13 +13,13 @@
 namespace rtabmap
 {
 
-    TrainThread::TrainThread(Memory *memory,
+    TrainThread::TrainThread(DBDriver *dbDriver,
                              const Model &model,
                              const ParametersMap &parameters,
                              int64_t target_width,
                              int64_t target_height,
                              const std::string &checkpointPath,
-                             torch::DeviceType device) : _memory(memory),
+                             torch::DeviceType device) : _dbDriver(dbDriver),
                                                          _model(model),
                                                          _training_end(false),
                                                          _is_training(false),
@@ -114,7 +114,7 @@ namespace rtabmap
         // STEP 1: UPDATE REPLAY MEMORY IF THERE IS
         if (this->_replay_memory->buffer()->size() > 0 && !signaturesMoved.empty())
         {
-            //TODO
+            // TODO
         }
 
         // STEP 1: EXPERIENCE TO VECTORS OF IDS, IMAGES AND LABELS
@@ -259,7 +259,7 @@ namespace rtabmap
         ULOGGER_DEBUG("Total Time for saving checkpoint=%fs", dict_timer.ticks());
         std::unordered_set<int> ids_in_memory;
         this->_replay_memory->get_ids_in_memory(ids_in_memory);
-        this->_memory->saveReplayMemory(ids, freezed_features, ids_in_memory);
+        this->saveReplayMemory(ids, freezed_features, ids_in_memory);
         // TODO
         //  Save current replay memory (only on close?)
 
@@ -332,7 +332,7 @@ namespace rtabmap
         std::vector<size_t> ids;
         torch::Tensor data;
         torch::Tensor labels;
-        this->_memory->loadReplayMemory(ids, data, labels);
+        this->loadReplayMemory(ids, data, labels);
         if (ids.size() > 0)
         {
             std::shared_ptr<LatentDataset> loaded_dataset = std::make_shared<LatentDataset>(ids, data, labels);
@@ -399,6 +399,40 @@ namespace rtabmap
             }
         }
         return epoch_loss /= n_batch;
+    }
+
+    void TrainThread::saveReplayMemory(const std::vector<size_t> &ids, const torch::Tensor &data, const std::unordered_set<int> &ids_in_memory) const
+    {
+        if (this->_dbDriver)
+        {
+            std::vector<std::vector<char>> serialized_data(ids.size());
+            for (size_t i = 0; i < ids.size(); i++)
+            {
+                std::vector<char> serialized_tensor = torch::pickle_save(data[i].clone());
+                serialized_data[i] = serialized_tensor;
+            }
+            this->_dbDriver->saveReplayMemory(ids, serialized_data, ids_in_memory);
+        }
+    }
+
+    void TrainThread::loadReplayMemory(std::vector<size_t> &ids, torch::Tensor &data, torch::Tensor &labels) const
+    {
+        if (this->_dbDriver)
+        {
+            std::vector<std::vector<char>> serialized_data;
+            std::vector<int> loaded_labels;
+            std::vector<torch::Tensor> loaded_tensors;
+
+            this->_dbDriver->loadReplayMemory(ids, serialized_data, loaded_labels);
+
+            for (size_t i = 0; i < ids.size(); i++)
+            {
+                loaded_tensors.emplace_back(torch::pickle_load(serialized_data[i]).toTensor());
+            }
+
+            data = torch::cat(loaded_tensors);
+            labels = torch::from_blob(loaded_labels.data(), {static_cast<long>(loaded_labels.size())}, torch::kInt32).to(torch::kLong);
+        }
     }
 
 }

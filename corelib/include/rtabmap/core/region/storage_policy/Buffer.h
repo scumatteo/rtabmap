@@ -3,13 +3,11 @@
 #ifndef BASE_BUFFER_H
 #define BASE_BUFFER_H
 
-#include "rtabmap/core/rtabmap_core_export.h" // DLL export/import defines
-
 #include "rtabmap/core/region/datasets/LatentDataset.h"
 
 namespace rtabmap
 {
-    class RTABMAP_CORE_EXPORT Buffer
+    class Buffer
     {
     public:
         Buffer(size_t max_size);

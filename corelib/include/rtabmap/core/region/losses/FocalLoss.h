@@ -3,14 +3,13 @@
 #ifndef FOCAL_LOSS_H
 #define FOCAL_LOSS_H
 
-#include "rtabmap/core/rtabmap_core_export.h" // DLL export/import defines
 #include <torch/torch.h>
 #include "rtabmap/core/region/losses/CustomLoss.h"
 
 namespace rtabmap
 {
 
-    struct RTABMAP_CORE_EXPORT FocalLossImpl : public CustomLossImpl
+    struct FocalLossImpl : public CustomLossImpl
     {
         torch::Scalar gamma;
 
