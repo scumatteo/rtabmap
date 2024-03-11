@@ -18,7 +18,7 @@ namespace rtabmap
 
     torch::Tensor compute_simple_weights(const torch::Tensor &samples_per_class)
     {
-        return 1.0 / samples_per_class;
+        return 1.0 / samples_per_class.to(torch::kFloat);
     }
 
     torch::Tensor compute_effective_weights(const torch::Tensor &samples_per_class, float beta)

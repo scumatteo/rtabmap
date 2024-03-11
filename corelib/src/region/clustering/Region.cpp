@@ -33,6 +33,8 @@ namespace rtabmap
         float scattering2 = 0;
         int regionId = signatures.front()->regionId();
 
+        ULOGGER_DEBUG("Cardinality for region %d=%d", regionId, (int)cardinality);
+
         pcl::PointCloud<pcl::PointXYZ>::Ptr positions(new pcl::PointCloud<pcl::PointXYZ>);
         positions->resize(cardinality);
 
@@ -65,7 +67,12 @@ namespace rtabmap
                 int n_neighbors = tree->nearestKSearch(p, 2, k_indices, k_sqr_distances); // the 1st-NN should be the node itself, the 2nd-NN should be the nearest neighbor
                 if (n_neighbors > 1)
                 {
-                    mesh += k_sqr_distances[1];
+                    float nn1 = sqrt(k_sqr_distances[1]);
+
+                    ULOGGER_DEBUG("1-NN idx=%d, dist=%f", k_indices[0], sqrt(k_sqr_distances[0]));
+                    ULOGGER_DEBUG("2-NN idx=%d, dist=%f", k_indices[1], nn1);
+                    ULOGGER_DEBUG("k_sqr_distances for region %d=%f", regionId, nn1);
+                    mesh += nn1;
                 }
                 else
                 {
@@ -73,10 +80,12 @@ namespace rtabmap
                     UFATAL("No NN found in region");
                 }
             }
-
+            
             mesh /= cardinality;
+            ULOGGER_DEBUG("Mesh for region %d=%f", regionId, mesh);
 
             equivalentRadius = Region::K * mesh * sqrt(cardinality);
+            ULOGGER_DEBUG("Equivalent radius for region %d=%f", regionId, equivalentRadius);
             float position_distances2 = 0;
             for (const auto &p : positions->points)
             {
@@ -84,6 +93,7 @@ namespace rtabmap
                                         pow(centroid.y - p.y, 2) +
                                         pow(centroid.z - p.z, 2));
             }
+            ULOGGER_DEBUG("Position distances 2 for region %d=%f", regionId, position_distances2);
             scattering2 = position_distances2 / (equivalentRadius + 1e-7);
         }
         else if (cardinality == 1)

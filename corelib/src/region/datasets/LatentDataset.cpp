@@ -19,7 +19,7 @@ namespace rtabmap
             this->_id_index.insert({ids[i], i});
         }
 
-        std::tuple<at::Tensor, at::Tensor, at::Tensor> unique_values = at::_unique2(this->_labels, false, false, true);
+        std::tuple<at::Tensor, at::Tensor, at::Tensor> unique_values = at::_unique2(this->_labels, true, false, true);
         this->_classes_in_dataset = std::get<0>(unique_values);
         this->_samples_per_class = std::get<2>(unique_values);
     }

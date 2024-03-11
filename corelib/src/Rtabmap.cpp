@@ -2539,10 +2539,11 @@ namespace rtabmap
 
 			//check for updating model if training end
 			_memory->checkModelUpdate();
-			if (!signature->isBadSignature() && (signature->getWeight() >= 0) && !smallDisplacement && !tooFastMovement)
+			if (!signature->isBadSignature() && (signature->getWeight() >= 0) && !smallDisplacement && !tooFastMovement && !_memory->currentImage().empty())
 			{
 				UTimer inferenceTimer;
 				//inference
+				ULOGGER_DEBUG("Prediction on signature %d", signature->id());
 				_memory->predict();
 				ULOGGER_DEBUG("Time for inference=%fs", inferenceTimer.ticks());
 				// std::set<int> excludedIds;

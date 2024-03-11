@@ -10,6 +10,9 @@ namespace rtabmap
     torch::Tensor FocalLossImpl::compute(const torch::Tensor &input,
                                          const torch::Tensor &target)
     {
+        std::cout << "FOCAL LOSS\n";
+        std::cout << input.sizes() << "\n";
+        std::cout << target.sizes() << "\n";
         torch::Tensor weighted_cross_entropy = torch::nn::functional::cross_entropy(input, target, this->options);
         torch::Tensor confidence = torch::exp(-weighted_cross_entropy);
         torch::Tensor focal_loss = torch::pow((1 - confidence), this->gamma) * weighted_cross_entropy;

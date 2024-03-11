@@ -7181,7 +7181,7 @@ namespace rtabmap
 				ULOGGER_DEBUG("DBDriverSqlite3::loadClusteringQuery no clustering parameters in DB");
 				totalMesh = 0;
 				totalConnections = 0;
-				totalRegions = 0;
+				totalRegions = 1;
 			}
 			UASSERT_MSG(rc == SQLITE_DONE, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
 			rc = sqlite3_finalize(ppStmt);
@@ -7316,8 +7316,7 @@ namespace rtabmap
 
 			if (ids.size() > 0)
 			{
-				std::vector<int> regionIds;
-				this->loadRegionsIds(ids, regionIds);
+				this->loadRegionsIds(ids, labels);
 			}
 
 			ULOGGER_DEBUG("Time load replay memory=%fs", timer.ticks());

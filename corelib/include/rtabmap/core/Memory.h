@@ -296,7 +296,7 @@ public:
 	// inline int roiWidth() const { return this->_roiWidth; }
 	// inline int roiHeight() const { return this->_roiHeight; }
 	void setCurrentImage();
-	// inline const cv::Mat &currentImage() const { return this->_currentImage; }
+	const cv::Mat &currentImage() const;
 	const std::unique_ptr<ContinualLearning> &learning() const;
 	int experienceSize() const;
 	size_t currentExperienceSize() const;

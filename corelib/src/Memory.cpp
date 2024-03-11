@@ -140,6 +140,7 @@ namespace rtabmap
 													  _parallelized(Parameters::defaultKpParallelized()),
 													  _registrationVis(0),
 													  _currentRegionId(-1),
+													  _regionCounter(1),
 													  _totalConnections(0),
 													  _totalMesh(0),
 													  _radiusUpperBound(Parameters::defaultRegionRadiusUpperBound()),
@@ -522,6 +523,8 @@ namespace rtabmap
 
 	void Memory::close(bool databaseSaved, bool postInitClosingEvents, const std::string &ouputDatabasePath)
 	{
+		this->_learning->checkModelUpdate();
+		this->_learning->train(this->_signaturesMoved, false);
 		UINFO("databaseSaved=%d, postInitClosingEvents=%d", databaseSaved ? 1 : 0, postInitClosingEvents ? 1 : 0);
 		if (postInitClosingEvents)
 			UEventsManager::post(new RtabmapEventInit(RtabmapEventInit::kClosing));
@@ -6706,7 +6709,7 @@ namespace rtabmap
 				ULOGGER_DEBUG("Total connections=%d", this->_totalConnections);
 
 				ULOGGER_DEBUG("Clustering first valid node, id=%d", this->_lastSignature->id());
-				this->_currentRegionId = this->_regionCounter;
+				this->_currentRegionId = this->_regionCounter - 1;
 				if (this->_currentRegionId == 0) // first session
 				{
 					this->_lastSignature->setRegionId(this->_currentRegionId); // set signature region
@@ -6845,6 +6848,8 @@ namespace rtabmap
 					if ((deltaScattering < defaultThreshold) &&
 						(distance < radius2) &&
 						(updatedRegion->scattering2() < minScattering))
+					// if ((distance < radius2) &&
+					// 	(updatedRegion->scattering2() < minScattering))
 					{
 						ULOGGER_DEBUG("New candidate id=%d", updatedRegion->id());
 						minScattering = updatedRegion->scattering2();
@@ -6866,10 +6871,11 @@ namespace rtabmap
 			}
 			else // new region
 			{
-				this->_regionCounter++;
 				this->_currentRegionId = this->_regionCounter;
-				ULOGGER_DEBUG("No candidate found. New region id=%d", this->_regionCounter);
-				this->_lastSignature->setRegionId(this->_regionCounter);
+				this->_regionCounter++;
+				ULOGGER_DEBUG("No candidate found. New region id=%d", this->_currentRegionId);
+				this->_lastSignature->setRegionId(this->_currentRegionId);
+
 			}
 
 			this->_dbDriver->updateClustering(this->_totalMesh, this->_totalConnections, this->_regionCounter);
@@ -7072,7 +7078,9 @@ namespace rtabmap
 
 	void Memory::initRegions(const ParametersMap &parameters)
 	{
+		std::cout << "HERE\n\n\n";
 		this->_learning = std::make_unique<ContinualLearning>(_dbDriver, _regionCounter, parameters);
+		std::cout << "HERE1\n\n\n";
 	}
 
 	void Memory::getIdsInRAM(std::set<int> &ids) const
@@ -7115,6 +7123,8 @@ namespace rtabmap
 	{
 		this->_learning->setCurrentImage(this->_lastSignature);
 	}
+
+	const cv::Mat &Memory::currentImage() const { return this->_learning->currentImage(); }
 
 	// void Memory::predict()
 	// {

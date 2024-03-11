@@ -22,17 +22,17 @@ namespace rtabmap
 																			  _targetWidth(Parameters::defaultContinualTargetWidth()),
 																			  _targetHeight(Parameters::defaultContinualTargetHeight())
     {
+		std::cout << "regionCounter " << regionCounter << "\n";
         this->parseParameters(parameters);
 		this->_device = this->_deviceType && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-
 		FeatureExtractor featureExtractor;
 		IncrementalLinear classifier(512, regionCounter);
 		//_regionCounter corresponds to the number of classes
-		if (regionCounter == 0) // no checkpoint yet, load initial model
+		if (regionCounter == 1) // no checkpoint yet, load initial model
 		{
 			this->_model = Model(featureExtractor, classifier, _modelPath);
 		}
-		else if (regionCounter > 0)
+		else if (regionCounter > 1)
 		{
 			this->_model = Model(featureExtractor, classifier, _checkpointPath);
 		}
@@ -43,8 +43,9 @@ namespace rtabmap
 
 		this->_model->eval();
 		this->_model->to(this->_device);
-
+		ULOGGER_DEBUG("Model creation. Training is %s", this->_model->is_training() ? "enabled" : "disabled");
 		Model new_model = this->_model->clone();
+		ULOGGER_DEBUG("Model clone creation. Training is %s", this->_model->is_training() ? "enabled" : "disabled");
 		this->_trainThread = std::make_unique<TrainThread>(_dbDriver,
 														   new_model,
 														   parameters,
@@ -76,6 +77,10 @@ namespace rtabmap
 		{
 			ULOGGER_DEBUG("Trying to add in experience id %d already present. Use updateInExperience instead.", id);
 		}
+		if (image.empty())
+		{
+			ULOGGER_DEBUG("Trying to add in experience an empty image.");
+		}
 		else
 		{
 			this->_currentExperience.insert({id, {image, regionId}});
@@ -84,7 +89,11 @@ namespace rtabmap
 
 	void ContinualLearning::addInExperience(int id, int regionId)
 	{
-		this->addInExperience(id, this->_currentImage, regionId);
+		if(!this->_currentImage.empty())
+		{
+			this->addInExperience(id, this->_currentImage, regionId);
+		}
+		
 	}
 
 	void ContinualLearning::updateInExperience(int id, int regionId)
@@ -99,9 +108,12 @@ namespace rtabmap
 		}
 	}
 
-	void ContinualLearning::train(const std::unordered_map<int, std::pair<int, int>> &signatures_moved) const
+	void ContinualLearning::train(const std::unordered_map<int, std::pair<int, int>> &signatures_moved, bool new_thread) const
 	{
-		this->_trainThread->train(this->_currentExperience, signatures_moved);
+		if(this->_currentExperience.size() > 0){
+			this->_trainThread->train(this->_currentExperience, signatures_moved, new_thread);
+		}
+		
 	}
 
     void ContinualLearning::checkModelUpdate()
@@ -109,14 +121,26 @@ namespace rtabmap
 		if (!this->_trainThread->is_training() && this->_trainThread->last_training_end())
 		{
 			this->_model = this->_trainThread->model();
-			ULOGGER_DEBUG("Updating model");
+			this->_model->eval();
+			this->_model->to(this->_device);
+			ULOGGER_DEBUG("Updating model in inference. Training is %s", this->_model->is_training() ? "enabled" : "disabled");
 		}
 	}
 
 	void ContinualLearning::setCurrentImage(Signature *s)
 	{
-		this->_currentImage = s->sensorData().imageRaw().clone();
-		ULOGGER_DEBUG("Current image is %s empty", this->_currentImage.empty() ? "" : "not");
+		// cv::Mat image = s->sensorData().imageRaw();
+		// ULOGGER_DEBUG("Current image is %s empty", image.empty() ? "" : "not");
+		// if (image.empty())
+		// {
+		// 	return;
+		// }		
+		// this->_currentImage = image.clone();
+		this->_currentImage = s->sensorData().imageRaw();
+		if(this->_currentImage.empty())
+		{
+			return;
+		}
 		if (this->_roiWidth != 0 && this->_roiHeight != 0)
 		{
 			cv::Rect roi(this->_roiX, this->_roiY, this->_roiWidth, this->_roiHeight);
@@ -137,6 +161,10 @@ namespace rtabmap
 			input = input.to(this->_device);
 			at::Tensor output = this->_model->forward(input);
 			output = torch::squeeze(output, 0).detach().cpu();
+			for(size_t i = 0; i < output.size(0); i++)
+			{
+				ULOGGER_DEBUG("Probability for region %d before EMA=%f", (int)i, output[i].item<double>());
+			}
 			if (this->_regionProbabilities.size(0) == 0)
 			{
 			}
@@ -150,12 +178,18 @@ namespace rtabmap
 			}
 
 			this->_regionProbabilities = output;
+			for(size_t i = 0; i < this->_regionProbabilities.size(0); i++)
+			{
+				std::cout << "Probability for region " << i << "after EMA " << this->_regionProbabilities[i].item<double>() <<"\n"; 
+				ULOGGER_DEBUG("Probability for region %d after EMA=%f", (int)i, this->_regionProbabilities[i].item<double>());
+			}
+			
 			std::tuple<at::Tensor, at::Tensor> sortedProbabilites = at::sort(this->_regionProbabilities, c10::optional<bool>(false), -1, true);
-			at::Tensor sortedRegionsTensor = std::get<1>(sortedProbabilites).slice(0, 0, this->_topK + 1);
-			std::vector<int> sortedRegions(sortedRegionsTensor.data_ptr<int64_t>(), sortedRegionsTensor.data_ptr<int64_t>() + sortedRegionsTensor.numel());
+			at::Tensor sortedRegionsIndices = std::get<1>(sortedProbabilites).slice(0, 0, this->_topK);
+			std::vector<int> sortedRegions(sortedRegionsIndices.data_ptr<int64_t>(), sortedRegionsIndices.data_ptr<int64_t>() + sortedRegionsIndices.numel());
 			for (size_t i = 0; i < sortedRegions.size(); i++)
 			{
-				ULOGGER_DEBUG("Top-%d prediction=%d", i + 1, sortedRegions[i]);
+				ULOGGER_DEBUG("Top-%d prediction=%d", i+1, sortedRegions[i]);
 			}
 			this->_topKRegions = std::set<int>(sortedRegions.begin(), sortedRegions.end());
 		}

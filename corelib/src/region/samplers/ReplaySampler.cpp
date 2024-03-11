@@ -45,9 +45,9 @@ namespace rtabmap
         ULOGGER_DEBUG("Sampler index=%d", (int)this->_index);
         std::vector<size_t> batch_indices;
         size_t current_experience_start_index = this->_index * this->_batch_size;
-        size_t current_experience_stop = this->_index == this->_max_index ? this->_current_experience_size - (current_experience_start_index % this->_current_experience_size) : this->_batch_size;
-        ULOGGER_DEBUG("Current experience from idx %d to idx %d", (int)current_experience_start_index, (int)(current_experience_start_index + current_experience_stop));
-        for (size_t i = 0; i < current_experience_stop; i++)
+        // size_t current_experience_stop = (this->_index == this->_max_index) && ((current_experience_start_index + this->_batch_size) % this->_current_experience_size > this->_batch_size) ? this->_batch_size;
+        ULOGGER_DEBUG("Current experience from idx %d to idx %d", (int)current_experience_start_index, (int)(current_experience_start_index + this->_batch_size));
+        for (size_t i = 0; i < this->_batch_size; i++)
         {
             batch_indices.push_back(this->_current_experience_indices[(current_experience_start_index + i) % this->_current_experience_size]);
         }
@@ -55,10 +55,10 @@ namespace rtabmap
         if (this->_replay_memory_size > 0)
         {
             size_t replay_memory_start_index = this->_index * this->_replay_memory_batch_size;
-            size_t replay_memory_stop = this->_index == this->_max_index ? this->_replay_memory_size - (replay_memory_start_index % this->_replay_memory_size) : this->_replay_memory_batch_size;
-            ULOGGER_DEBUG("Replay memory from idx %d to idx %d", (int)replay_memory_start_index, (int)(replay_memory_start_index + replay_memory_stop));
+            // size_t replay_memory_stop = this->_index == this->_max_index ? this->_replay_memory_size - (replay_memory_start_index % this->_replay_memory_size) : this->_replay_memory_batch_size;
+            ULOGGER_DEBUG("Replay memory from idx %d to idx %d", (int)replay_memory_start_index, (int)(replay_memory_start_index + this->_replay_memory_batch_size));
 
-            for (size_t i = 0; i < replay_memory_stop; i++)
+            for (size_t i = 0; i < this->_replay_memory_batch_size; i++)
             {
                 batch_indices.push_back(this->_replay_memory_indices[(replay_memory_start_index + i) % this->_replay_memory_size]);
             }

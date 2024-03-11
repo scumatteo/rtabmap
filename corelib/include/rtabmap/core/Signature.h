@@ -153,10 +153,6 @@ public:
 	*/
 	inline int regionId() const { return this->_regionId; }
 
-	inline void addNonValidSuccessiveId(int id) { this->_nonValidSuccessiveIds.emplace_back(id); }
-
-	inline const std::list<int> &nonValidSuccessiveIds() const { return this->_nonValidSuccessiveIds; }
-
 private:
 	int _id;
 	int _mapId;
@@ -187,7 +183,6 @@ private:
 	SensorData _sensorData;
 
 	int _regionId;
-	std::list<int> _nonValidSuccessiveIds;
 };
 
 } // namespace rtabmap

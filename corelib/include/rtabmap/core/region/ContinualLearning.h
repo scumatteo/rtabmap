@@ -29,7 +29,7 @@ namespace rtabmap
         int regionCounter,
                     const ParametersMap &parameters);
 
-        void train(const std::unordered_map<int, std::pair<int, int>> &signatures_moved) const;
+        void train(const std::unordered_map<int, std::pair<int, int>> &signatures_moved, bool new_thread = true) const;
 
         inline int experienceSize() const { return this->_experienceSize; }
         inline const std::unordered_map<int, std::pair<cv::Mat, int>> &currentExperience() const { return this->_currentExperience; }

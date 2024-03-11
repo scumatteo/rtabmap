@@ -8,7 +8,7 @@
 #include "rtabmap/core/Parameters.h"
 #include "rtabmap/core/region/models/Model.h"
 #include "rtabmap/core/region/utils.h"
-#include "rtabmap/core/region/storage_policy/ClassBalancedBuffer.h"
+#include "rtabmap/core/region/storage_policy/Buffer.h"
 #include "rtabmap/core/region/losses/CustomLoss.h"
 
 #include <opencv2/opencv.hpp>
@@ -34,7 +34,7 @@ namespace rtabmap
         bool last_training_end();
         // const Model on_training_end();
 
-        void train(std::unordered_map<int, std::pair<cv::Mat, int>> experience, std::unordered_map<int, std::pair<int, int>> signatures_moved);
+        void train(std::unordered_map<int, std::pair<cv::Mat, int>> experience, std::unordered_map<int, std::pair<int, int>> signatures_moved, bool new_thread = true);
 
     private:
 
