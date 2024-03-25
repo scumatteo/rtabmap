@@ -21,7 +21,6 @@ namespace rtabmap
     {
         torch::Tensor x = this->trainable_part->forward(input);
         x = torch::flatten(x, 1);
-        std::cout << x.sizes() << "\n";
         return x;
     }
 

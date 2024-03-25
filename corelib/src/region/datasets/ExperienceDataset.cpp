@@ -25,11 +25,6 @@ namespace rtabmap
 
     torch::data::Example<> ExperienceDataset::get(size_t index)
     {
-
         return {this->_images[index], this->_labels[index]};
-        // return torch::data::Example<torch::Tensor, torch::Tensor>(torch::Tensor({this->_ids[index], torch::Tensor({this->images_[index]})}), this->labels_[index];
-        // torch::Tensor tensor = torch::tensor(static_cast<float>(this->_ids[index]));
-        // return torch::data::Example<>(torch::Tensor({this->_ids[index], torch::Tensor({this->images_[index]})}), this->labels_[index]
-        // );
     }
 }

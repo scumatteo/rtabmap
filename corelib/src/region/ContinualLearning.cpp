@@ -22,7 +22,6 @@ namespace rtabmap
 																			  _targetWidth(Parameters::defaultContinualTargetWidth()),
 																			  _targetHeight(Parameters::defaultContinualTargetHeight())
     {
-		std::cout << "regionCounter " << regionCounter << "\n";
         this->parseParameters(parameters);
 		this->_device = this->_deviceType && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
 		FeatureExtractor featureExtractor;
@@ -180,7 +179,6 @@ namespace rtabmap
 			this->_regionProbabilities = output;
 			for(size_t i = 0; i < this->_regionProbabilities.size(0); i++)
 			{
-				std::cout << "Probability for region " << i << "after EMA " << this->_regionProbabilities[i].item<double>() <<"\n"; 
 				ULOGGER_DEBUG("Probability for region %d after EMA=%f", (int)i, this->_regionProbabilities[i].item<double>());
 			}
 			

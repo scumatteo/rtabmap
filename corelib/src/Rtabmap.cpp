@@ -2986,15 +2986,11 @@ namespace rtabmap
 				info.covariance = cv::Mat::eye(6, 6, CV_64FC1);
 				if (_rgbdSlamMode)
 				{
-					std::cout << _loopClosureHypothesis.first << "\n";
-					std::cout << signature->id() << "\n";
-					std::cout << _loopClosureIdentityGuess << "\n";
 					transform = _memory->computeTransform(
 						_loopClosureHypothesis.first,
 						signature->id(),
 						_loopClosureIdentityGuess ? Transform::getIdentity() : Transform(),
 						&info);
-					std::cout << "OK1\n";
 
 					loopClosureVisualInliersMeanDist = info.inliersMeanDistance;
 					loopClosureVisualInliersDistribution = info.inliersDistribution;

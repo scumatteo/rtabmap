@@ -6452,10 +6452,6 @@ namespace rtabmap
 	{
 		std::list<Signature *> signaturesForRegion;
 		this->getSignaturesForRegion(regionId, signaturesForRegion);
-		// std::cout << "Signatures for region " << regionId << "\n";
-		// for(const auto &s : signaturesForRegion){
-		// 	std::cout << s->id() << "\n";
-		// }
 		return Region::create(signaturesForRegion, this->_defaultScattering);
 	}
 
@@ -6631,10 +6627,6 @@ namespace rtabmap
 
 					float delta_scattering = updatedRegion->scattering2() - region->scattering2();
 					pcl::PointXYZ signaturePos = signature->getPose().position();
-
-					// std::cout << "DELTA SCATTERING " << delta_scattering << "\n";
-					// std::cout << "DISTANCE " << (pow(updatedRegion->centroid().x - signaturePos.x, 2) + pow(updatedRegion->centroid().y - signaturePos.y, 2) + pow(updatedRegion->centroid().z - signaturePos.z, 2)) << "\n";
-					// std::cout << "RADIUS " << pow(this->_radiusUpperBound, 2) << "\n";
 
 					if (delta_scattering < minDeltaScattering &&
 						((pow(updatedRegion->centroid().x - signaturePos.x, 2) +
@@ -6823,27 +6815,12 @@ namespace rtabmap
 									  pow(updatedRegion->centroid().z - signaturePos.z, 2));
 					float radius2 = pow(this->_radiusUpperBound, 2);
 
-					// ULOGGER_DEBUG("Delta scattering=%f", deltaScattering);
-					// ULOGGER_DEBUG("Default threshold=%f", defaultThreshold);
-					// ULOGGER_DEBUG("Distance=%f", distance);
-					// ULOGGER_DEBUG("Radius^2=%f", radius2);
-					// ULOGGER_DEBUG("Scattering=%f", updatedRegion->scattering2());
-					// ULOGGER_DEBUG("Min scattering=%f", minScattering);
-
 					ULOGGER_DEBUG("Clustering condition: (%f < %f) && (%f < %f) && (%f < %f)", deltaScattering,
 								  defaultThreshold,
 								  distance,
 								  radius2,
 								  updatedRegion->scattering2(),
 								  minScattering);
-
-					// std::cout << "SCATTERING +: " << updatedRegion->scattering2() - region->scattering2() << "\n";
-					// std::cout << "SECOND: " << this->_memory->clusteringThreshold() + this->_memory->defaultScattering() << "\n";
-					// std::cout << "DISTANCE: " << (pow(updatedRegion->centroid().x - signaturePos.x, 2) +
-					// 	  pow(updatedRegion->centroid().y - signaturePos.y, 2) +
-					// 	  pow(updatedRegion->centroid().z - signaturePos.z, 2)) << "\n";
-					// std::cout << "RADIUS: " << pow(this->_memory->radiusUpperBound(), 2) << "\n";
-					// std::cout << "SCATTERING: " << updatedRegion->scattering2();
 
 					if ((deltaScattering < defaultThreshold) &&
 						(distance < radius2) &&
@@ -7078,9 +7055,7 @@ namespace rtabmap
 
 	void Memory::initRegions(const ParametersMap &parameters)
 	{
-		std::cout << "HERE\n\n\n";
 		this->_learning = std::make_unique<ContinualLearning>(_dbDriver, _regionCounter, parameters);
-		std::cout << "HERE1\n\n\n";
 	}
 
 	void Memory::getIdsInRAM(std::set<int> &ids) const

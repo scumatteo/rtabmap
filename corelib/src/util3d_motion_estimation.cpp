@@ -262,19 +262,6 @@ Transform estimateMotion3DTo2D(
 			std::vector<int> * inliersOut)
 {
 
-	std::cout << "words3A size: " << words3A.size() << "\n";
-	std::cout << "words2B size: " << words2B.size() << "\n";
-	std::cout << "cameraModels size: " << cameraModels.size() << "\n";
-	std::cout << "samplingPolicy: " << samplingPolicy << "\n";
-	std::cout << "minInliers: " << minInliers << "\n";
-	std::cout << "iterations: " << iterations << "\n";
-	std::cout << "reprojError: " << reprojError << "\n";
-	std::cout << "flagsPnP: " << flagsPnP << "\n";
-	std::cout << "refineIterations: " << refineIterations << "\n";
-	std::cout << "varianceMedianRatio: " << varianceMedianRatio << "\n";
-	std::cout << "maxVariance: " << maxVariance << "\n";
-	std::cout << "words3B size: " << words3B.size() << "\n";
-
 	Transform transform;
 #ifndef RTABMAP_OPENGV
 	UERROR("This function is only available if rtabmap is built with OpenGV dependency.");
@@ -431,13 +418,9 @@ Transform estimateMotion3DTo2D(
 			ransac.threshold_ = 1.0 - cos(atan(reprojError/cameraModels[0].fx()));
 			ransac.max_iterations_ = iterations;
 			UDEBUG("Ransac params: threshold = %f (reprojError=%f fx=%f), max iterations=%d", ransac.threshold_, reprojError, cameraModels[0].fx(), ransac.max_iterations_);
-			std::cout << "threshold: " << ransac.threshold_ << "\n";
-			std::cout << "reprojError: " << reprojError << "\n";
-			std::cout << "fx: " << cameraModels[0].fx() << "\n";
-			std::cout << "max_iterations: " << ransac.max_iterations_ << "\n";
+
 			//Run the experiment
 			ransac.computeModel();
-			std::cout << "OKKK4\n";
 
 			pnp = Transform::fromEigen3d(ransac.model_coefficients_);
 

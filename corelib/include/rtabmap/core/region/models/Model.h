@@ -28,7 +28,7 @@ namespace rtabmap
         torch::Tensor forward(const torch::Tensor &input);
         void adapt(const torch::Tensor &classes_in_this_experience);
         void set_freezed_part();
-        inline bool is_trained() const { std::cout << "out " << this->classifier->linear->options.out_features(); return this->classifier->linear->options.out_features() > 0; }
+        inline bool is_trained() const { return this->classifier->linear->options.out_features() > 0; }
 
         std::shared_ptr<ModelImpl> clone();
         void save_state_dict(const std::string &model_path);
