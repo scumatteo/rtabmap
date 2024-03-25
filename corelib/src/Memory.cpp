@@ -6699,9 +6699,10 @@ namespace rtabmap
 
 				ULOGGER_DEBUG("Total mesh=%f", this->_totalMesh);
 				ULOGGER_DEBUG("Total connections=%d", this->_totalConnections);
+				ULOGGER_DEBUG("Region counter=%d", this->_regionCounter);
 
 				ULOGGER_DEBUG("Clustering first valid node, id=%d", this->_lastSignature->id());
-				this->_currentRegionId = this->_regionCounter - 1;
+				this->_currentRegionId = this->_regionCounter;
 				if (this->_currentRegionId == 0) // first session
 				{
 					this->_lastSignature->setRegionId(this->_currentRegionId); // set signature region
