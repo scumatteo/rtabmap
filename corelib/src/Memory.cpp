@@ -6271,7 +6271,8 @@ void Memory::getMetricConstraints(
 						if(s->getWeight() == -1)
 						{
 							Link link = jter->second;
-							while(s && s->getWeight() == -1)
+							// std::set<int> visited;
+							while(s && s->getWeight() == -1)// && visited.find(s->id()) == visited.end())
 							{
 								// skip to next neighbor, well we assume that bad signatures
 								// are only linked by max 2 neighbor links.
@@ -6283,9 +6284,14 @@ void Memory::getMetricConstraints(
 									const Signature * s2 = this->getSignature(uter->first);
 									if(s2)
 									{
+										// visited.insert(s2->id());
 										link = link.merge(uter->second, uter->second.type());
 										poses.erase(s->id());
 										s = s2;
+									}
+									else
+									{
+										break;
 									}
 
 								}

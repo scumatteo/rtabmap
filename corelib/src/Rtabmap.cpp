@@ -4220,6 +4220,7 @@ bool Rtabmap::process(
 	//============================================================
 	double totalTime = timerTotal.ticks();
 	ULOGGER_INFO("Total time processing = %fs...", totalTime);
+	ULOGGER_INFO("Max time allowed = %fms...", _maxTimeAllowed);
 	if((_maxTimeAllowed != 0 && totalTime*1000>_maxTimeAllowed) ||
 		(_maxMemoryAllowed != 0 && _memory->getWorkingMem().size() > _maxMemoryAllowed))
 	{
@@ -4234,18 +4235,18 @@ bool Rtabmap::process(
 	}
 	_lastProcessTime = totalTime;
 
-	std::ofstream WMFile;
-	WMFile.open("/wsl/WM.txt", std::ios_base::app);
-	for(const auto &n : _memory->getWorkingMem())
-	{
-		WMFile << n.first << ",";
-	}
-	WMFile << "\n";
-	WMFile.close();
+	// std::ofstream WMFile;
+	// WMFile.open("/wsl/WM.txt", std::ios_base::app);
+	// for(const auto &n : _memory->getWorkingMem())
+	// {
+	// 	WMFile << n.first << ",";
+	// }
+	// WMFile << "\n";
+	// WMFile.close();
 
-	WMFile.open("/wsl/time.txt", std::ios_base::app);
-	WMFile << totalTime*1000 << "\n";
-	WMFile.close();
+	// WMFile.open("/wsl/time.txt", std::ios_base::app);
+	// WMFile << totalTime*1000 << "\n";
+	// WMFile.close();
 
 	// cleanup cached gps values
 	for(std::list<int>::iterator iter=signaturesRemoved.begin(); iter!=signaturesRemoved.end() && _gpsGeocentricCache.size(); ++iter)
@@ -5036,15 +5037,19 @@ void Rtabmap::optimizeCurrentMap(
 	UINFO("Optimize map: around location %d (lookInDatabase=%s)", id, lookInDatabase?"true":"false");
 	if(_memory && id > 0)
 	{
+		std::cout << "HERE40\n";
 		UTimer timer;
 		std::map<int, int> ids = _memory->getNeighborsId(id, 0, lookInDatabase?-1:0, true, false);
 		if(!_optimizeFromGraphEnd && ids.size() > 1)
 		{
 			id = ids.begin()->first;
 		}
+		std::cout << "HERE41\n";
 		UINFO("get %d ids time %f s", (int)ids.size(), timer.ticks());
 
+		std::cout << "HERE42\n";
 		std::map<int, Transform> poses = Rtabmap::optimizeGraph(id, uKeysSet(ids), optimizedPoses, lookInDatabase, covariance, constraints, error, iterationsDone);
+		std::cout << "HERE43\n";
 		UINFO("optimize time %f s", timer.ticks());
 
 		if(poses.size())
@@ -5084,14 +5089,18 @@ std::map<int, Transform> Rtabmap::optimizeGraph(
 	std::map<int, Transform> poses;
 	std::multimap<int, Link> edgeConstraints;
 	UDEBUG("ids=%d", (int)ids.size());
+	std::cout << "HERE50\n";
 	_memory->getMetricConstraints(ids, poses, edgeConstraints, lookInDatabase, !_graphOptimizer->landmarksIgnored());
+	std::cout << "HERE59\n";
 	UINFO("get constraints (ids=%d, %d poses, %d edges) time %f s", (int)ids.size(), (int)poses.size(), (int)edgeConstraints.size(), timer.ticks());
 
 	// add landmark priors if there are some
 	for(std::map<int, Transform>::iterator iter=poses.begin(); iter!=poses.end() && iter->first < 0; ++iter)
 	{
+		std::cout << "HERE51\n";
 		if(_markerPriors.find(iter->first) != _markerPriors.end())
 		{
+			std::cout << "HERE52\n";
 			cv::Mat infMatrix = cv::Mat::eye(6, 6, CV_64FC1);
 			infMatrix(cv::Range(0,3), cv::Range(0,3)) /= _markerPriorsLinearVariance;
 			infMatrix(cv::Range(3,6), cv::Range(3,6)) /= _markerPriorsAngularVariance;
@@ -5105,6 +5114,7 @@ std::map<int, Transform> Rtabmap::optimizeGraph(
 	{
 		for(std::map<int, Transform>::iterator iter=poses.begin(); iter!=poses.end(); ++iter)
 		{
+			std::cout << "HERE53\n";
 			// Apply guess poses (if some), ignore for rootid to avoid origin drifting
 			std::map<int, Transform>::const_iterator foundGuess = guessPoses.find(iter->first);
 			if(foundGuess!=guessPoses.end() && iter->first != fromId)
@@ -5118,6 +5128,7 @@ std::map<int, Transform> Rtabmap::optimizeGraph(
 	UASSERT(_graphOptimizer!=0);
 	if(_graphOptimizer->iterations() == 0)
 	{
+		std::cout << "HERE60\n";
 		// Optimization disabled! Return not optimized poses.
 		optimizedPoses = poses;
 		if(constraints)
@@ -5133,8 +5144,11 @@ std::map<int, Transform> Rtabmap::optimizeGraph(
 			UDEBUG("recompute poses using only links (robust to multi-session)");
 			std::map<int, Transform> posesOut;
 			std::multimap<int, Link> edgeConstraintsOut;
+			std::cout << "HERE54\n";
 			_graphOptimizer->getConnectedGraph(fromId, poses, edgeConstraints, posesOut, edgeConstraintsOut);
+			std::cout << "HERE55\n";
 			optimizedPoses = _graphOptimizer->optimize(fromId, posesOut, edgeConstraintsOut, covariance, 0, error, iterationsDone);
+			std::cout << "HERE56\n";
 			if(constraints)
 			{
 				*constraints = edgeConstraintsOut;
@@ -5143,7 +5157,9 @@ std::map<int, Transform> Rtabmap::optimizeGraph(
 		else
 		{
 			UDEBUG("use input guess poses");
+			std::cout << "HERE57\n";
 			optimizedPoses = _graphOptimizer->optimize(fromId, poses, edgeConstraints, covariance, 0, error, iterationsDone);
+			std::cout << "HERE58\n";
 			if(constraints)
 			{
 				*constraints = edgeConstraints;
