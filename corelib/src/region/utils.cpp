@@ -18,13 +18,18 @@ namespace rtabmap
 
     torch::Tensor compute_simple_weights(const torch::Tensor &samples_per_class)
     {
-        return 1.0 / samples_per_class.to(torch::kFloat);
+        torch::Tensor samples_copy = samples_per_class.clone();
+        torch::Tensor mask = samples_per_class == 0;
+        samples_copy.index_put_({mask}, torch::full({}, static_cast<int64_t>(1e10)));
+        return 1.0 / samples_copy.to(torch::kFloat);
     }
 
     torch::Tensor compute_effective_weights(const torch::Tensor &samples_per_class, float beta)
     {
-        torch::Tensor effective_sum = 1.0 - torch::pow(beta, samples_per_class);
-        torch::Tensor weights = (1.0 - beta) / effective_sum;
+        torch::Tensor effective_sum = 1.0 - torch::pow(beta, samples_per_class.to(torch::kFloat));
+        torch::Tensor mask = (samples_per_class == 0).to(torch::kLong);
+        effective_sum.to(torch::kLong).index_put_({mask}, torch::full({}, static_cast<int64_t>(1e10)));
+        torch::Tensor weights = (1.0 - beta) / effective_sum.to(torch::kFloat);
         return weights / torch::sum(weights) * samples_per_class.size(0);
     }
 

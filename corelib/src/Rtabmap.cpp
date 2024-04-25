@@ -2280,7 +2280,6 @@ namespace rtabmap
 		
 		// Continual set current image for NN
 		_memory->setCurrentImage();
-
 		
 		// create a copy of the image for save before destroying
 		// cv::Mat currentImage = signature->sensorData().imageRaw().clone();
@@ -4274,7 +4273,7 @@ namespace rtabmap
 		}
 
 		// START TRAINING
-		if (_memory->currentExperienceSize() >= _memory->experienceSize())
+		if (_memory->currentExperienceSize() >= _memory->experienceSize() && !_memory->isTraining())
 		{
 			ULOGGER_DEBUG("START TRAINING!");
 			this->_memory->train();
@@ -4314,15 +4313,19 @@ namespace rtabmap
 		// 		_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
 		// 	}
 		// }
-		ULOGGER_INFO("Removing old signatures of different regions");
-		immunizedLocations.insert(_lastLocalizationNodeId); // keep the latest localization in working memory
-		std::list<int> transferred = _memory->forget(immunizedLocations);
-		ULOGGER_DEBUG("Signatures transferred: %d", transferred.size());
-		signaturesRemoved.insert(signaturesRemoved.end(), transferred.begin(), transferred.end());
-		if (!_someNodesHaveBeenTransferred && transferred.size())
+		if (_maxTimeAllowed != 0 && totalTime * 1000 > _maxTimeAllowed)
 		{
-			_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
+			ULOGGER_INFO("Removing old signatures of different regions");
+			immunizedLocations.insert(_lastLocalizationNodeId); // keep the latest localization in working memory
+			std::list<int> transferred = _memory->forget(immunizedLocations);
+			ULOGGER_DEBUG("Signatures transferred: %d", transferred.size());
+			signaturesRemoved.insert(signaturesRemoved.end(), transferred.begin(), transferred.end());
+			if (!_someNodesHaveBeenTransferred && transferred.size())
+			{
+				_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
+			}
 		}
+		
 
 		ULOGGER_DEBUG("WM size after transferring: %d", _memory->getWorkingMem().size());
 

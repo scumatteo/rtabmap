@@ -303,6 +303,7 @@ public:
 	void predict();
 	void train() const;
 	void checkModelUpdate();
+	bool isTraining() const;
 	void clearCurrentExperience();
 
 	// inline int topK() const { return this->_topK; }
@@ -313,6 +314,7 @@ public:
 	// 					  const torch::Tensor &data, 
 	// 					  const std::unordered_set<int> &idsInReplayMemory) const;
 	// void loadReplayMemory(std::vector<size_t> &ids, torch::Tensor &data, torch::Tensor &labels) const;
+
 
 private:
 	void preUpdate();
@@ -462,6 +464,7 @@ private:
 	float _clusteringThreshold;
 	int _desiredAverageCardinality;
 	float _scattering1Const;
+	int _lastClusteredId;
 
 	std::unique_ptr<ContinualLearning> _learning;
 	

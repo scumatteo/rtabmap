@@ -22,6 +22,11 @@ namespace rtabmap
         this->_seen_classes.insert(classes_in_new_data_vec.begin(), classes_in_new_data_vec.end());
         ULOGGER_DEBUG("Number of total classes in replay memory=%d", (int)this->_seen_classes.size());
         size_t group_length = this->_get_group_length();
+        if(group_length < 40)
+        {
+            this->resize(this->_seen_classes.size() * 60);
+        }
+        group_length = this->_get_group_length();
         ULOGGER_DEBUG("Size of each %d bucket=%d", (int)this->_seen_classes.size(), (int)group_length);
 
         for (const auto &current_class : this->_seen_classes)

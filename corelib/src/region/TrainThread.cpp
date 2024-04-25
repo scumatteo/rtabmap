@@ -214,10 +214,13 @@ namespace rtabmap
         std::shared_ptr<LatentDataset> total_dataset;
         experience_dataset->concat(this->_replay_memory->buffer(), total_dataset);
 
-        for(size_t i = 0; i < total_dataset->samples_per_class().size(0); i++)
+        torch::Tensor samples_per_class = torch::zeros(num_classes).to(torch::kLong);
+        samples_per_class.index_put_({total_dataset->classes_in_dataset().to(torch::kLong)}, total_dataset->samples_per_class().to(torch::kLong));
+
+        for(size_t i = 0; i < samples_per_class.size(0); i++)
         {
-            ULOGGER_DEBUG("Class in total dataset=%d", (int)total_dataset->classes_in_dataset()[i].item<int64_t>());
-            ULOGGER_DEBUG("Samples per class=%d", (int)total_dataset->samples_per_class()[i].item<int64_t>());
+            ULOGGER_DEBUG("Class in total dataset=%d", (int)i);
+            ULOGGER_DEBUG("Samples per class=%d", (int)samples_per_class[i].item<int64_t>());
         }
 
         // STEP 5: UPDATE LOSS WEIGHTS
@@ -227,7 +230,7 @@ namespace rtabmap
             // compute total labels from current experience and replay memory
             // if use dataset, concat datasets and get labels, use tensor concatenation otherwise
 
-            torch::Tensor weights = this->compute_weights(total_dataset->samples_per_class());
+            torch::Tensor weights = this->compute_weights(samples_per_class);
             for(size_t i = 0; i < weights.size(0); i++)
             {
                 ULOGGER_DEBUG("Weights for class %d=%f", (int)i, weights[i].item<double>());
@@ -247,7 +250,7 @@ namespace rtabmap
         ULOGGER_DEBUG("RAM usage before dataloader creation=%ld", UProcessInfo::getMemoryUsage());
         auto experience_dataloader = torch::data::make_data_loader(map_dataset,
                                                                    replay_sampler,
-                                                                   torch::data::DataLoaderOptions(this->_batch_size).drop_last(false).workers(4));
+                                                                   torch::data::DataLoaderOptions(this->_batch_size).drop_last(false).workers(2));
         ULOGGER_DEBUG("RAM usage after dataloader creation=%ld", UProcessInfo::getMemoryUsage());
 
         float experience_loss = 0.0;

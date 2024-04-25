@@ -47,6 +47,7 @@ namespace rtabmap
         inline const cv::Mat &currentImage() const { return this->_currentImage; }
         void predict();
         void checkModelUpdate();
+        bool isTraining() const;
 
         inline const std::set<int> &topKRegions() const { return this->_topKRegions; } 
 

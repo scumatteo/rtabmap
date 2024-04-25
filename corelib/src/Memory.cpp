@@ -75,7 +75,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "rtabmap/core/region/ContinualLearning.h"
 #endif
 
-
 namespace rtabmap
 {
 
@@ -148,7 +147,8 @@ namespace rtabmap
 													  _meshShapeFactor(Parameters::defaultRegionMeshShapeFactor()),
 													  _clusteringThreshold(0),
 													  _defaultScattering(0),
-													  _scattering1Const(0)
+													  _scattering1Const(0),
+													  _lastClusteredId(0)
 
 	{
 		_feature2D = Feature2D::create(parameters);
@@ -6692,207 +6692,217 @@ namespace rtabmap
 	{
 		UTimer timer;
 		timer.start();
+
 		if (this->_lastSignature->getWeight() >= 0) // valid node
 		{
-			if (this->_currentRegionId == -1) // first valid node
+			if (this->_lastClusteredId != this->_lastSignature->id())
 			{
+				this->_lastClusteredId = this->_lastSignature->id();
+				if (this->_currentRegionId == -1) // first valid node
+				{
+
+					ULOGGER_DEBUG("Total mesh=%f", this->_totalMesh);
+					ULOGGER_DEBUG("Total connections=%d", this->_totalConnections);
+					ULOGGER_DEBUG("Region counter=%d", this->_regionCounter);
+
+					ULOGGER_DEBUG("Clustering first valid node, id=%d", this->_lastSignature->id());
+					this->_currentRegionId = this->_regionCounter;
+					if (this->_currentRegionId == 0) // first session
+					{
+						this->_lastSignature->setRegionId(this->_currentRegionId); // set signature region
+						return;
+					}
+					bool onlyLinkedWithItself = true;
+					for (const auto &l : this->_lastSignature->getLinks())
+					{
+						if (l.second.from() != l.first) // first node only link to itself?
+						{
+							onlyLinkedWithItself = false;
+							break;
+						}
+					}
+					if (onlyLinkedWithItself)
+					{
+						this->_lastSignature->setRegionId(this->_currentRegionId);
+						return;
+					}
+				}
+
+				ULOGGER_DEBUG("Clustering valid node, id=%d", this->_lastSignature->id());
+				std::set<int> regionIdsConnected;
+
+				this->cacheSignatureForClustering(this->_lastSignature);
+
+				float newGaps = 0;
+				int newConnections = 0;
+				pcl::PointXYZ signaturePos = this->_lastSignature->getPose().position();
+
+				for (const auto &l : this->_lastSignature->getLinks()) // always in WM because connected to the current signature
+				{
+					if (l.first == this->_lastSignature->id()) // link to itself
+					{
+						continue;
+					}
+
+					Signature *s = this->_signatures[l.first];
+
+					ULOGGER_DEBUG("Link to id=%d", l.first);
+					ULOGGER_DEBUG("Weight=%d", s->getWeight());
+					pcl::PointXYZ linkedPos = s->getPose().position();
+
+					newGaps += sqrt(pow(signaturePos.x - linkedPos.x, 2) +
+									pow(signaturePos.y - linkedPos.y, 2) +
+									pow(signaturePos.z - linkedPos.z, 2));
+					newConnections++;
+
+					regionIdsConnected.insert(s->regionId()); // regions to retrieve from db
+					this->cacheSignatureForClustering(s);
+				}
+
+				ULOGGER_DEBUG("New gaps=%f", newGaps);
+
+				this->_totalMesh = (this->_totalMesh * this->_totalConnections + newGaps) / (this->_totalConnections + newConnections);
+				this->_totalConnections = this->_totalConnections + newConnections;
 
 				ULOGGER_DEBUG("Total mesh=%f", this->_totalMesh);
 				ULOGGER_DEBUG("Total connections=%d", this->_totalConnections);
-				ULOGGER_DEBUG("Region counter=%d", this->_regionCounter);
 
-				ULOGGER_DEBUG("Clustering first valid node, id=%d", this->_lastSignature->id());
-				this->_currentRegionId = this->_regionCounter;
-				if (this->_currentRegionId == 0) // first session
+				this->updateGlobalClusteringParams();
+
+				for (const auto &id : regionIdsConnected) // retrieve signatures for these regions
 				{
-					this->_lastSignature->setRegionId(this->_currentRegionId); // set signature region
-					return;
-				}
-				bool onlyLinkedWithItself = true;
-				for (const auto &l : this->_lastSignature->getLinks())
-				{
-					if (l.second.from() != l.first) // first node only link to itself?
+					ULOGGER_DEBUG("Region connected id=%d", id);
+					std::list<Signature *> signaturesRetrieved;
+					if (_dbDriver)
 					{
-						onlyLinkedWithItself = false;
-						break;
+						this->_dbDriver->loadSignaturesByRegion(id, signaturesRetrieved, true, false);
+					}
+					else
+					{
+						UFATAL("DBDriver not valid in Memory assignRegion");
+					}
+					// for(auto iter = signaturesForRegion.begin(); iter != signaturesForRegion.end(); ++iter){
+					// 	if (signatures.count((*iter)->id())){
+					// 		(*iter) = signatures[(*iter)->id()];
+					// 	}
+					// }
+					this->cacheSignaturesForClustering(signaturesRetrieved);
+				}
+
+				Region *candidate = 0;
+				float minScattering = 1e10;
+				std::set<int> regionsVisitedIds;
+				for (const auto &l : this->_lastSignature->getLinks()) // for each link (here is already retrieved each connected region)
+				{
+					if (l.first == this->_lastSignature->id()) // link to itself
+					{
+						continue;
+					}
+					Signature *s = this->_clusteringSignatures[l.first];
+
+					if (s) // should always be != null
+					{
+						if (regionsVisitedIds.find(s->regionId()) != regionsVisitedIds.end()) // already tried
+						{
+							continue;
+						}
+						regionsVisitedIds.insert(s->regionId());
+
+						Region *region = this->getRegion(s->regionId());
+						this->_lastSignature->setRegionId(region->id());
+						Region *updatedRegion = this->getRegion(s->regionId());
+						this->_lastSignature->setRegionId(-1);
+
+						float deltaScattering = updatedRegion->scattering2() - region->scattering2();
+						float defaultThreshold = this->_clusteringThreshold + this->_defaultScattering;
+						float distance = (pow(updatedRegion->centroid().x - signaturePos.x, 2) +
+										  pow(updatedRegion->centroid().y - signaturePos.y, 2) +
+										  pow(updatedRegion->centroid().z - signaturePos.z, 2));
+						float radius2 = pow(this->_radiusUpperBound, 2);
+
+						ULOGGER_DEBUG("Clustering condition: (%f < %f) && (%f < %f) && (%f < %f)", deltaScattering,
+									  defaultThreshold,
+									  distance,
+									  radius2,
+									  updatedRegion->scattering2(),
+									  minScattering);
+
+						if ((deltaScattering < defaultThreshold) &&
+							(distance < radius2) &&
+							(updatedRegion->scattering2() < minScattering))
+						// if ((distance < radius2) &&
+						// 	(updatedRegion->scattering2() < minScattering))
+						{
+							ULOGGER_DEBUG("New candidate id=%d", updatedRegion->id());
+							minScattering = updatedRegion->scattering2();
+							candidate = updatedRegion;
+							delete region;
+						}
+						else
+						{
+							delete updatedRegion;
+						}
 					}
 				}
-				if (onlyLinkedWithItself)
+				if (candidate) // if a candidate is found
 				{
+					ULOGGER_DEBUG("Candidate id=%d", candidate->id());
+					this->_currentRegionId = candidate->id();
 					this->_lastSignature->setRegionId(this->_currentRegionId);
-					return;
+					delete candidate;
 				}
-			}
-
-			ULOGGER_DEBUG("Clustering valid node, id=%d", this->_lastSignature->id());
-			std::set<int> regionIdsConnected;
-
-			this->cacheSignatureForClustering(this->_lastSignature);
-
-			float newGaps = 0;
-			int newConnections = 0;
-			pcl::PointXYZ signaturePos = this->_lastSignature->getPose().position();
-
-			for (const auto &l : this->_lastSignature->getLinks()) // always in WM because connected to the current signature
-			{
-				if (l.first == this->_lastSignature->id()) // link to itself
+				else // new region
 				{
-					continue;
+					this->_currentRegionId = this->_regionCounter;
+					this->_regionCounter++;
+					ULOGGER_DEBUG("No candidate found. New region id=%d", this->_currentRegionId);
+					this->_lastSignature->setRegionId(this->_currentRegionId);
 				}
 
-				Signature *s = this->_signatures[l.first];
+				this->_dbDriver->updateClustering(this->_totalMesh, this->_totalConnections, this->_regionCounter);
 
-				ULOGGER_DEBUG("Link to id=%d", l.first);
-				ULOGGER_DEBUG("Weight=%d", s->getWeight());
-				pcl::PointXYZ linkedPos = s->getPose().position();
+				std::unordered_map<int, std::pair<int, int>> signaturesMoved; // id, <old_regionId, new_regionId>
+				this->moveFromRegion(this->_lastSignature, signaturesMoved);
+				for (const auto &l : this->_lastSignature->getLinks()) // connected to the current signature, already cached
+				{
+					if (l.first == this->_lastSignature->id()) // link to itself
+					{
+						continue;
+					}
+					Signature *s = this->_clusteringSignatures[l.first];
+					this->moveFromRegion(s, signaturesMoved);
+				}
 
-				newGaps += sqrt(pow(signaturePos.x - linkedPos.x, 2) +
-								pow(signaturePos.y - linkedPos.y, 2) +
-								pow(signaturePos.z - linkedPos.z, 2));
-				newConnections++;
+				for (const auto &id_region : signaturesMoved)
+				{
+					// this->addIdInExperience(id_region.first);
+					this->_learning->updateInExperience(id_region.first, id_region.second.second);
+				}
 
-				regionIdsConnected.insert(s->regionId()); // regions to retrieve from db
-				this->cacheSignatureForClustering(s);
-			}
+				if (signaturesMoved.count(this->_lastSignature->id()))
+				{
+					this->_currentRegionId = this->_lastSignature->regionId();
+				}
 
-			ULOGGER_DEBUG("New gaps=%f", newGaps);
+			
 
-			this->_totalMesh = (this->_totalMesh * this->_totalConnections + newGaps) / (this->_totalConnections + newConnections);
-			this->_totalConnections = this->_totalConnections + newConnections;
-
-			ULOGGER_DEBUG("Total mesh=%f", this->_totalMesh);
-			ULOGGER_DEBUG("Total connections=%d", this->_totalConnections);
-
-			this->updateGlobalClusteringParams();
-
-			for (const auto &id : regionIdsConnected) // retrieve signatures for these regions
-			{
-				ULOGGER_DEBUG("Region connected id=%d", id);
-				std::list<Signature *> signaturesRetrieved;
 				if (_dbDriver)
 				{
-					this->_dbDriver->loadSignaturesByRegion(id, signaturesRetrieved, true, false);
+					this->_dbDriver->updateRegions(signaturesMoved);
 				}
 				else
 				{
 					UFATAL("DBDriver not valid in Memory assignRegion");
 				}
-				// for(auto iter = signaturesForRegion.begin(); iter != signaturesForRegion.end(); ++iter){
-				// 	if (signatures.count((*iter)->id())){
-				// 		(*iter) = signatures[(*iter)->id()];
-				// 	}
-				// }
-				this->cacheSignaturesForClustering(signaturesRetrieved);
+
+				this->updateSignaturesMoved(signaturesMoved);
+
+				this->clearCachedSignaturesForClustering();
 			}
-
-			Region *candidate = 0;
-			float minScattering = 1e10;
-			std::set<int> regionsVisitedIds;
-			for (const auto &l : this->_lastSignature->getLinks()) // for each link (here is already retrieved each connected region)
-			{
-				if (l.first == this->_lastSignature->id()) // link to itself
-				{
-					continue;
-				}
-				Signature *s = this->_clusteringSignatures[l.first];
-
-				if (s) // should always be != null
-				{
-					if (regionsVisitedIds.find(s->regionId()) != regionsVisitedIds.end()) // already tried
-					{
-						continue;
-					}
-					regionsVisitedIds.insert(s->regionId());
-
-					Region *region = this->getRegion(s->regionId());
-					this->_lastSignature->setRegionId(region->id());
-					Region *updatedRegion = this->getRegion(s->regionId());
-					this->_lastSignature->setRegionId(-1);
-
-					float deltaScattering = updatedRegion->scattering2() - region->scattering2();
-					float defaultThreshold = this->_clusteringThreshold + this->_defaultScattering;
-					float distance = (pow(updatedRegion->centroid().x - signaturePos.x, 2) +
-									  pow(updatedRegion->centroid().y - signaturePos.y, 2) +
-									  pow(updatedRegion->centroid().z - signaturePos.z, 2));
-					float radius2 = pow(this->_radiusUpperBound, 2);
-
-					ULOGGER_DEBUG("Clustering condition: (%f < %f) && (%f < %f) && (%f < %f)", deltaScattering,
-								  defaultThreshold,
-								  distance,
-								  radius2,
-								  updatedRegion->scattering2(),
-								  minScattering);
-
-					if ((deltaScattering < defaultThreshold) &&
-						(distance < radius2) &&
-						(updatedRegion->scattering2() < minScattering))
-					// if ((distance < radius2) &&
-					// 	(updatedRegion->scattering2() < minScattering))
-					{
-						ULOGGER_DEBUG("New candidate id=%d", updatedRegion->id());
-						minScattering = updatedRegion->scattering2();
-						candidate = updatedRegion;
-						delete region;
-					}
-					else
-					{
-						delete updatedRegion;
-					}
-				}
-			}
-			if (candidate) // if a candidate is found
-			{
-				ULOGGER_DEBUG("Candidate id=%d", candidate->id());
-				this->_currentRegionId = candidate->id();
+			else {
 				this->_lastSignature->setRegionId(this->_currentRegionId);
-				delete candidate;
+				
 			}
-			else // new region
-			{
-				this->_currentRegionId = this->_regionCounter;
-				this->_regionCounter++;
-				ULOGGER_DEBUG("No candidate found. New region id=%d", this->_currentRegionId);
-				this->_lastSignature->setRegionId(this->_currentRegionId);
-
-			}
-
-			this->_dbDriver->updateClustering(this->_totalMesh, this->_totalConnections, this->_regionCounter);
-
-			std::unordered_map<int, std::pair<int, int>> signaturesMoved; // id, <old_regionId, new_regionId>
-			this->moveFromRegion(this->_lastSignature, signaturesMoved);
-			for (const auto &l : this->_lastSignature->getLinks()) // connected to the current signature, already cached
-			{
-				if (l.first == this->_lastSignature->id()) // link to itself
-				{
-					continue;
-				}
-				Signature *s = this->_clusteringSignatures[l.first];
-				this->moveFromRegion(s, signaturesMoved);
-			}
-
-			for (const auto &id_region : signaturesMoved)
-			{
-				// this->addIdInExperience(id_region.first);
-				this->_learning->updateInExperience(id_region.first, id_region.second.second);
-			}
-
-			if (signaturesMoved.count(this->_lastSignature->id()))
-			{
-				this->_currentRegionId = this->_lastSignature->regionId();
-			}
-
-			if (_dbDriver)
-			{
-				this->_dbDriver->updateRegions(signaturesMoved);
-			}
-			else
-			{
-				UFATAL("DBDriver not valid in Memory assignRegion");
-			}
-
-			this->updateSignaturesMoved(signaturesMoved);
-
-			this->clearCachedSignaturesForClustering();
 		}
 		else if (this->_lastSignature->getWeight() == -1)
 		{
@@ -6950,7 +6960,6 @@ namespace rtabmap
 		}
 		ULOGGER_DEBUG("Size of signatures moved=%d", (int)this->_signaturesMoved.size());
 
-		
 		// std::set<int> toRemove;
 
 		// for (const auto &idRegion : signaturesMoved)
@@ -7057,6 +7066,10 @@ namespace rtabmap
 	void Memory::initRegions(const ParametersMap &parameters)
 	{
 		this->_learning = std::make_unique<ContinualLearning>(_dbDriver, _regionCounter, parameters);
+	}
+
+	bool Memory::isTraining() const {
+		return this->_learning->isTraining();
 	}
 
 	void Memory::getIdsInRAM(std::set<int> &ids) const
@@ -7206,12 +7219,12 @@ namespace rtabmap
 	const std::unique_ptr<ContinualLearning> &Memory::learning() const { return this->_learning; }
 	int Memory::experienceSize() const { return this->_learning->experienceSize(); }
 	size_t Memory::currentExperienceSize() const { return this->_learning->currentExperienceSize(); }
-	void Memory::predict() {this->_learning->predict(); }
+	void Memory::predict() { this->_learning->predict(); }
 	void Memory::checkModelUpdate() { this->_learning->checkModelUpdate(); }
 	void Memory::clearCurrentExperience() { this->_learning->clearCurrentExperience(); }
 
 	// inline int topK() const { return this->_topK; }
-	const std::set<int> &Memory::topKRegions() const { return this->_learning->topKRegions(); } 
+	const std::set<int> &Memory::topKRegions() const { return this->_learning->topKRegions(); }
 
 	// void Memory::saveLatentData(const std::vector<size_t> &ids, const torch::Tensor &data) const
 	// {

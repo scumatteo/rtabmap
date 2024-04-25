@@ -2,6 +2,10 @@
 #include "rtabmap/utilite/ULogger.h"
 #include "rtabmap/core/region/utils.h"
 
+#include <exception>
+#include <typeinfo>
+#include <stdexcept>
+
 namespace rtabmap
 {
 
@@ -69,7 +73,7 @@ namespace rtabmap
             std::istringstream iss(data);
             torch::serialize::InputArchive archive;
             archive.load_from(iss);
-            clone->load(archive);
+            clone->load(archive);    
         }
 
         return clone;
