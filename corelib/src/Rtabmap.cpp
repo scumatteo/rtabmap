@@ -4243,7 +4243,7 @@ namespace rtabmap
 				signaturesRemoved.push_back(signature->id());
 
 				_memory->addInExperience(signature->id(), signature->regionId());
-				_memory->deleteLocation(signature->id(), false, 0, true);
+				_memory->deleteLocation(signature->id(), true, 0, true);
 			}
 			else
 			{
@@ -4313,18 +4313,18 @@ namespace rtabmap
 		// 		_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
 		// 	}
 		// }
-		if (_maxTimeAllowed != 0 && totalTime * 1000 > _maxTimeAllowed)
+		// if (_maxTimeAllowed != 0 && totalTime * 1000 > _maxTimeAllowed)
+		// {
+		ULOGGER_INFO("Removing old signatures of different regions");
+		immunizedLocations.insert(_lastLocalizationNodeId); // keep the latest localization in working memory
+		std::list<int> transferred = _memory->forget(immunizedLocations);
+		ULOGGER_DEBUG("Signatures transferred: %d", transferred.size());
+		signaturesRemoved.insert(signaturesRemoved.end(), transferred.begin(), transferred.end());
+		if (!_someNodesHaveBeenTransferred && transferred.size())
 		{
-			ULOGGER_INFO("Removing old signatures of different regions");
-			immunizedLocations.insert(_lastLocalizationNodeId); // keep the latest localization in working memory
-			std::list<int> transferred = _memory->forget(immunizedLocations);
-			ULOGGER_DEBUG("Signatures transferred: %d", transferred.size());
-			signaturesRemoved.insert(signaturesRemoved.end(), transferred.begin(), transferred.end());
-			if (!_someNodesHaveBeenTransferred && transferred.size())
-			{
-				_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
-			}
+			_someNodesHaveBeenTransferred = true; // only used to hide a warning on close nodes immunization
 		}
+		// }
 		
 
 		ULOGGER_DEBUG("WM size after transferring: %d", _memory->getWorkingMem().size());
